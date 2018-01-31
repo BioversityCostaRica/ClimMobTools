@@ -1,5 +1,6 @@
 #FUNCTIONS FOR DATA LEARNING AND PORTFOLIOS CONTRUCTIONS USING CROWDSOURCING DATA
 #Kauê de Sousa, Heather Turner and Jacob van Etten 
+#Updated in 31 Jan 2018
 
 
 # Tools for environmental data gathering ####
