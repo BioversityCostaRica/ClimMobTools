@@ -14,7 +14,8 @@
 get.timespan <- function(X, pdate, ts = 50, days.before = 0)
   {
   n <- nrow(X)
-  date <- match(as.character(pdate), as.character(dimnames(X)[[2]]))
+  date <- as.data.frame(pdate)
+  date <- match(as.character(date[,1]), as.character(dimnames(X)[[2]]))
   date <- date - days.before
   Y <- NULL
   for(i in 0:ts) Y <- cbind(Y, X[cbind(1:n, date+i)]) #need a better solution
@@ -72,6 +73,8 @@ temp.index <- function(X, ts = NULL, index = NULL)
   if(!is.na(match("NTx20", names(ind) ))) ind["NTx20"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] >= 20, na.rm=TRUE)) #nights with temperature above 20 C
   if(!is.na(match("DTR", names(ind) ))) ind["DTR"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #daily temperature range max temperature - min temperature
   if(!is.na(match("NTR", names(ind) ))) ind["NTR"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #night temperature range max temperature - min temperature
+  
+  ind[is.na(ind)] <- 0 
   
   return(ind)
 }
@@ -149,7 +152,9 @@ rainfall.index <- function(X, ts = NULL, index = NULL)
   if(!is.na(match("SDII", names(ind) ))) ind["SDII"]     <- apply(X, 1, function(X) (sum(X[1:ts])/length(X[1:ts] > 0)) ) #simple rainfall intensity index (mean of rainy days / total rainfall)
   if(!is.na(match("Rx1day", names(ind) ))) ind["Rx1day"] <- apply(X, 1, function(X) max(X[1:ts])) #maximum 1-day rainfall
   if(!is.na(match("Rx5day", names(ind) ))) ind["Rx5day"] <- get.Rx5day(X, ts) #maximum 5-day rainfall
-  if(!is.na(match("Rtotal", names(ind) ))) ind["Rtotal"] <- apply(X, 1, function(X) sum(X[1:ts >= 1], na.rm = T) ) #total rainfall (mm) in wet days (r >= 1)
+  if(!is.na(match("Rtotal", names(ind) ))) ind["Rtotal"] <- apply(X, 1, function(X) sum(X[1:ts], na.rm = T) ) #total rainfall (mm) in wet days (r >= 1)
+  
+  ind[is.na(ind)] <- 0
   
   return(ind)
 }
