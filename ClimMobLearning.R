@@ -1,5 +1,5 @@
 #FUNCTIONS FOR DATA LEARNING AND PORTFOLIOS CONTRUCTIONS USING CROWDSOURCING DATA
-#Jacob van Etten, Kauê de Sousa, Heather Turner 
+#Jacob van Etten, Kaue de Sousa, Heather Turner 
 #First run 31 Nov 2017
 #Updated in 01 Feb 2018
 
@@ -12,7 +12,7 @@
 # additional.rank = comparison with local item will be done as addional rank comparing all items with local individually
 # function return a PlackettLuce rank (see PlackettLuce::as.rankings)
 as.PL <- function(x, local = FALSE, additional.rank = TRUE)
-  {
+{
   #get nrow in x
   n <- nrow(x)
   
@@ -191,8 +191,26 @@ pltree_ensemble <- function(train, cluster, ntrees)
   
 }
 
-crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50, alpha = 0.05,
-                                 npseudo=0, ntrees = 25, cluster, ...)
+
+
+# example("beans", package = "PlackettLuce")
+# G <- grouped_rankings(R, rep(seq_len(nrow(beans)), 4))
+# weights <- c(rep(0.3, 400), rep(1, 442))
+# 
+# # formula <- as.formula(G ~ P1)
+# formula <- as.formula(paste0(c("G ~ "), paste(vtest, collapse = " + ")))
+# d <- mydata
+# folds <- as.integer(mydata$season)
+# k <- max(folds)
+# minsize <- 50
+# alpha <- 0.01
+# bonferroni <- TRUE
+# verbose <- TRUE
+# PL.weights <- test.weights
+
+crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50, 
+                                 alpha = 0.05, bonferroni = TRUE, 
+                                 verbose = TRUE, ...) #npseudo=0, cluster, ntrees = 25, ...)
 {
   
   #Create folds if needed, check length if given
@@ -209,8 +227,8 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   
   #Setting up things for the loop
   #rs as an empty vector, which will be filled in the loop with correlation coefficients
-  taus <- rep(NA, times=k)
-  Ns_effective <- rep(NA, times=k)
+  taus <- rep(NA, times = k)
+  Ns_effective <- rep(NA, times = k)
   
   #Prepare matrix with observations to later compare with predictions for each fold
   observed <- d$G[1:length(d$G),, as.grouped_rankings = TRUE]
@@ -218,22 +236,51 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   observed <- observed[1:length(observed),, as.grouped_rankings = FALSE]
   observed[observed == 0] <- NA
   
+  
   #These objects are sent to the worker nodes only once, and then used in every iteration
   #Only the train vector changes and is sent to the nodes for every fold (done inside the pltree_ensemble function)
-  clusterExport(cluster, c("formula", "d", "minsize", "npseudo", "alpha"), envir = environment())
+  #clusterExport(cluster, c("formula", "d", "minsize", "npseudo", "alpha"), envir = environment())
   
   for(i in 1:k){
     
-    cat("Starting fold ", i, " of ", k, " folds. Time: ", date(), "\n")
+    if(verbose) cat("Starting fold ", i, " of ", k, " folds. Time: ", date(), "\n")
+    
+    fold_i <- i
     
     #The train and test part change in every iteration
-    train <- folds != i
+    #train <- folds != i
+    train <- d[folds != fold_i,]
+    
+    
+    if(exists("PL.weights")){
+      
+      weights_i <- as.vector(PL.weights[[ fold_i ]])
+      
+      tree <- do.call(pltree,
+                      list(formula = formula,
+                           data = train, minsize = minsize, alpha = alpha,
+                           weights = weights_i , bonferroni = bonferroni))
+
+    }  else {
+      
+      tree <- do.call(pltree,
+                      list(formula = formula,
+                           data = train, minsize = minsize, alpha = alpha,
+                           bonferroni = bonferroni))
+
+    }
     
     #Use PL tree ensemble on the train data to create a prediction of the test part of the data
     #Output is a matrix with predictions with cases in the rownames
     #Some rows with lacking data may have dropped, so we spend some effort on reformatting
     #observed and predicted matrices to make them match
-    preds <- pltree_ensemble(train = train, cluster = cluster, ntrees = ntrees)
+    # preds <- pltree_ensemble(train = train, cluster = cluster, ntrees = ntrees)
+    
+ 
+    
+    #predict over test data
+    preds <- predict(tree, newdata = d[folds == fold_i,] , vcov = F)
+    
     preds_index <- as.integer(rownames(preds))
     
     #"shrink" observed ranks
@@ -251,7 +298,7 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     
     Ns_effective[i] <- r[2]
     
-    cat("Fold ", i, " completed. Kendall's correlation: ", r[1], "\n")
+    if(verbose) cat("Fold ", i, " completed. Kendall's correlation: ", r[1], "\n")
     
   }
   
@@ -263,12 +310,13 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   # In k-fold cross-validation, this will slightly correct if n/k is not a round number
   # It will not affect the tau value if n/k is a round number
   foldsize <- table(folds)
-  average_tau <- sum(taus * as.vector(foldsize)) / sum(foldsize)
+  #average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  average_tau <- mean(taus, na.rm = TRUE)
   
   # The Z score is calculated from the average tau
   # N is taken as total N_effective, taking into account that not all were compared to all
   # Calculation of Z score follows: Abdi, H., 2007. The Kendall rank correlation coefficient. Encyclopedia of Measurement and Statistics. Sage, Thousand Oaks, CA, pp.508-510.
-  N_effective <- sum(Ns_effective)
+  N_effective <- sum(Ns_effective, na.rm = TRUE)
   z_score <- average_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
   
   result <- list(folds=folds, taus=taus, foldsize = foldsize, average_tau = average_tau, z_score=z_score, N_effective=N_effective)
@@ -283,7 +331,8 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
 #x is a list of PL trees (ensemble)
 #newdata is a dataframe with the variables used to predict for new cases
 #... passes arguments to the predict function
-predict_ensemble <- function(x, newdata, aggregate_function = mean, ...){
+predict_ensemble <- function(x, newdata, aggregate_function = mean, ...)
+  {
   
   ntrees <- length(x)
   vars <- names(coef(x[[1]]))
@@ -309,7 +358,8 @@ predict_ensemble <- function(x, newdata, aggregate_function = mean, ...){
 
 
 #Calculate minimum regret
-minRegretn <- function(loss, n){
+minRegretn <- function(loss, n)
+  {
   
   regretn <- function(x, loss){
     
@@ -343,7 +393,8 @@ minRegretn <- function(loss, n){
   
 }
 
-create_portfolio <- function(ensemble, newdata, n, digits=5){
+create_portfolio <- function(ensemble, newdata, n, digits=5)
+  {
   
   #Predict variety probability of winning
   pred <- predict_ensemble(ensemble, newdata)
