@@ -1,7 +1,7 @@
 #FUNCTIONS FOR DATA LEARNING AND PORTFOLIOS CONTRUCTIONS USING CROWDSOURCING DATA
 #Jacob van Etten, Kaue de Sousa, Heather Turner 
 #First run 31 Nov 2017
-#Updated in 01 Feb 2018
+#Updated in 14 Feb 2018
 
 
 # Tools for data handling ####
@@ -140,6 +140,47 @@ get_tau <- function(predictedcoef, observedrank, ...)
   
 }
 
+#Calculate Log-Likelihood from predicted coefficients
+get_logLik <- function(observedrank, coeff)
+{
+  
+  x <- observedrank
+  cc <- coeff
+  
+  nr1 <- nrow(x)
+  nr2 <- nrow(cc)
+  if(is.null(nr2)){
+    nr2 <- nr1 #in case the input of coeff is a vector with no rows
+    cc <- do.call("rbind", replicate(nr1, cc, simplify = FALSE))
+  }
+  
+  if(nr1 != nr2){stop("coefficients and observedrank do not have equal number of rows")}
+  
+  nc1 <- ncol(x)
+  nc2 <- ncol(cc)
+  if(nc1 != nc2){stop("coefficients and observedrank do not have equal number of columns")}
+  
+  nc <- nc1
+  
+  #get loglik values
+  LL <- apply(cbind(x,cc), 1, function(X){
+    
+    y <- X[1:nc]
+    z <- X[(nc+1):(2*nc)]
+    
+    v <- as.vector(na.omit(z[order(y, na.last = NA)])) # Put coefficients in the right order
+    l <- 0
+    # From Hunter MM(2004) The Annals of Statistics, Vol. 32, No. 1, 384-406, page 397
+    for(i in 1:(length(v)-1)) l <- l + v[i] - log(sum(exp(v[(i):(length(v))])))
+    return(l)
+    
+  })
+  
+  return(sum(LL))
+  
+}
+
+
 #Function that sends i-fold vector (assigning to inside and outside of fold) of length n to nodes and gets back predictions for the i-fold test set
 #It then aggregates the predictions and calculates the tau
 pltree_ensemble <- function(train, cluster, ntrees)
@@ -197,20 +238,19 @@ pltree_ensemble <- function(train, cluster, ntrees)
 # G <- grouped_rankings(R, rep(seq_len(nrow(beans)), 4))
 # weights <- c(rep(0.3, 400), rep(1, 442))
 # 
-# # formula <- as.formula(G ~ P1)
-# formula <- as.formula(paste0(c("G ~ "), paste(vtest, collapse = " + ")))
+# formula <- as.formula(G ~ P1)
 # d <- mydata
-# folds <- as.integer(mydata$season)
+# folds <- as.integer(as.factor(mydata$season))
 # k <- max(folds)
 # minsize <- 50
 # alpha <- 0.01
 # bonferroni <- TRUE
 # verbose <- TRUE
-# PL.weights <- test.weights
+# PL.weights <- myweights
 
 crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50, 
                                  alpha = 0.05, bonferroni = TRUE, 
-                                 verbose = TRUE, ...) #npseudo=0, cluster, ntrees = 25, ...)
+                                 verbose = FALSE, ...) #npseudo=0, cluster, ntrees = 25, ...)
 {
   
   #Create folds if needed, check length if given
@@ -228,6 +268,7 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   #Setting up things for the loop
   #rs as an empty vector, which will be filled in the loop with correlation coefficients
   taus <- rep(NA, times = k)
+  logliks <- rep(NA, times = k)
   Ns_effective <- rep(NA, times = k)
   
   #Prepare matrix with observations to later compare with predictions for each fold
@@ -254,7 +295,9 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     
     if(exists("PL.weights")){
       
-      weights_i <- as.vector(PL.weights[[ fold_i ]])
+      weights_i <- as.vector(PL.weights[ !is.na( PL.weights[, fold_i]  ) , fold_i ])
+      
+      if(length(weights_i) != nrow(train)) stop("PL.weights and training data have different extent")
       
       tree <- do.call(pltree,
                       list(formula = formula,
@@ -279,9 +322,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
  
     
     #predict over test data
-    preds <- predict(tree, newdata = d[folds == fold_i,] , vcov = F)
+    preds <- predict(tree, newdata = d[folds == fold_i,] , vcov = FALSE)
+    predscoef <- predict(tree, newdata = d[folds == fold_i,] , vcov = FALSE, log = TRUE, ref = 1)
     
     preds_index <- as.integer(rownames(preds))
+    
     
     #"shrink" observed ranks
     obs_index <- index_observed[index_observed %in% preds_index] #inside i-th fold and inside preds
@@ -291,14 +336,19 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     match_index <- match(obs_index, preds_index)
     predicted_expanded <- preds[match_index,]
     
+    predicted_expanded_coef <- predscoef[match_index,]
+    
     #calculate correlation by comparing predicted test data with observed test data
     r <- get_tau(predicted_expanded, observed_shrunk) 
-    
     taus[i] <- r[1]
+    
+    #calculate lo likelihood by comparing predicted test with observed test data
+    l <- get_logLik(observed_shrunk, predicted_expanded_coef)
+    logliks[i] <- l
     
     Ns_effective[i] <- r[2]
     
-    if(verbose) cat("Fold ", i, " completed. Kendall's correlation: ", r[1], "\n")
+    if(verbose) cat("Fold ", i, " completed. Negative Log-Likelihood: ", l , "\n")
     
   }
   
@@ -310,8 +360,10 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   # In k-fold cross-validation, this will slightly correct if n/k is not a round number
   # It will not affect the tau value if n/k is a round number
   foldsize <- table(folds)
-  #average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  # average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
   average_tau <- mean(taus, na.rm = TRUE)
+  
+  average_loglik <- mean(logliks, na.rm = TRUE)
   
   # The Z score is calculated from the average tau
   # N is taken as total N_effective, taking into account that not all were compared to all
@@ -319,7 +371,9 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   N_effective <- sum(Ns_effective, na.rm = TRUE)
   z_score <- average_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
   
-  result <- list(folds=folds, taus=taus, foldsize = foldsize, average_tau = average_tau, z_score=z_score, N_effective=N_effective)
+  result <- list(folds = folds, taus = taus, logliks = logliks, foldsize = foldsize, 
+                 average_loglik = average_loglik, average_tau = average_tau, 
+                 z_score = z_score, N_effective = N_effective)
   
   return(result)
   
