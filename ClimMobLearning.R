@@ -1,8 +1,12 @@
 #FUNCTIONS FOR DATA LEARNING AND PORTFOLIOS CONTRUCTIONS USING CROWDSOURCING DATA
 #Jacob van Etten, Kaue de Sousa, Heather Turner 
 #First run 31 Nov 2017
-#Updated in 14 Feb 2018
+#Updated in 19 Feb 2018
 
+library(PlackettLuce)
+library(foreach)
+library(doParallel)
+library(abind)
 
 # Tools for data handling ####
 #Prepare the data for analysis with PlackettLuce.
@@ -85,13 +89,7 @@ as.PL <- function(x, local = FALSE, additional.rank = TRUE)
 }
 
 # Tools for data learning and modelling ####
-#Jacob van Etten
 #k-fold cross-validation with PL trees
-library(PlackettLuce)
-library(foreach)
-library(doParallel)
-library(abind)
-
 #Calculate correlation coefficient
 get_tau <- function(predictedcoef, observedrank, ...)
 {
@@ -140,6 +138,7 @@ get_tau <- function(predictedcoef, observedrank, ...)
   
 }
 
+
 #Calculate Log-Likelihood from predicted coefficients
 get_logLik <- function(observedrank, coeff)
 {
@@ -180,77 +179,24 @@ get_logLik <- function(observedrank, coeff)
   
 }
 
-
-#Function that sends i-fold vector (assigning to inside and outside of fold) of length n to nodes and gets back predictions for the i-fold test set
-#It then aggregates the predictions and calculates the tau
-pltree_ensemble <- function(train, cluster, ntrees)
-{
-  
-  #Export train, which is what changes (different fold)
-  clusterExport(cluster, "train", envir = environment())
-  
-  #Create function to combine prediction matrices into 3-dimensional array
-  #Idea obtained from here:
-  #https://stackoverflow.com/questions/17570806/parallel-for-loop-with-an-array-as-output
-  acomb <- function(...) abind(..., along = 3)
-  
-  #Function that creates a prediction array for the test fold
-  #Array of 3 dimensions: farms (rows), varieties (columns) and trees (third dimension)
-  f1 <- function(formula, dat, minsize, npseudo, alpha, newdata) {
-    
-    m <- do.call("pltree", list(formula = formula, 
-                                data = dat,
-                                minsize = minsize,
-                                npseudo = npseudo,
-                                alpha = alpha))
-    
-    pp <- predict(object=m, newdata = newdata)
-    
-    return(pp)
-    
-  }
-  
-  #get predictions for test from nodes and put in matrix (foreach)
-  preds <- foreach(j = 1:ntrees, 
-                   .combine=acomb,
-                   .packages=c("PlackettLuce")) %dopar% (
-                     
-                     f1(formula = formula, 
-                        dat = d[sample(which(train), size = sum(train), replace=TRUE),], 
-                        minsize = minsize,
-                        npseudo = npseudo,
-                        alpha = alpha,
-                        newdata = d[!train,])
-                     
-                   )
-  
-  #get average prediction for test fold 
-  #averaging probability of winning across trees
-  preds_matrix <- apply(preds, c(1,2), mean)
-  
-  return(preds_matrix)
-  
-}
-
-
-
 # example("beans", package = "PlackettLuce")
 # G <- grouped_rankings(R, rep(seq_len(nrow(beans)), 4))
 # weights <- c(rep(0.3, 400), rep(1, 442))
 # 
-# formula <- as.formula(G ~ P1)
+# # formula <- as.formula(G ~ P1)
+# formula <- as.formula(paste0(c("G ~ "), paste(vtest, collapse = " + ")))
 # d <- mydata
-# folds <- as.integer(as.factor(mydata$season))
+# folds <- as.integer(mydata$season)
 # k <- max(folds)
 # minsize <- 50
 # alpha <- 0.01
 # bonferroni <- TRUE
 # verbose <- TRUE
-# PL.weights <- myweights
+# PL.weights <- test.weights
 
 crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50, 
                                  alpha = 0.05, bonferroni = TRUE, 
-                                 verbose = FALSE, ...) #npseudo=0, cluster, ntrees = 25, ...)
+                                 verbose = TRUE, PL.weights = 1, lambda = 0, ...) #npseudo=0, cluster, ntrees = 25, ...)
 {
   
   #Create folds if needed, check length if given
@@ -292,27 +238,19 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     #train <- folds != i
     train <- d[folds != fold_i,]
     
-    
-    if(exists("PL.weights")){
+    if(is.matrix(PL.weights)){
+      weights_i <- as.vector(na.omit(PL.weights[ , fold_i]))  #as.vector(PL.weights[[ fold_i ]])
+      weights_i <- weights_i ^ lambda
+    }else{
+      weights_i <- rep(1, times = nrow(train))
       
-      weights_i <- as.vector(PL.weights[ !is.na( PL.weights[, fold_i]  ) , fold_i ])
-      
-      if(length(weights_i) != nrow(train)) stop("PL.weights and training data have different extent")
-      
-      tree <- do.call(pltree,
-                      list(formula = formula,
-                           data = train, minsize = minsize, alpha = alpha,
-                           weights = weights_i , bonferroni = bonferroni))
-
-    }  else {
-      
-      tree <- do.call(pltree,
-                      list(formula = formula,
-                           data = train, minsize = minsize, alpha = alpha,
-                           bonferroni = bonferroni))
-
     }
     
+    tree <- do.call(pltree,
+                    list(formula = formula,
+                         data = train, minsize = minsize, alpha = alpha,
+                         weights = weights_i , bonferroni = bonferroni))
+
     #Use PL tree ensemble on the train data to create a prediction of the test part of the data
     #Output is a matrix with predictions with cases in the rownames
     #Some rows with lacking data may have dropped, so we spend some effort on reformatting
@@ -322,11 +260,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
  
     
     #predict over test data
-    preds <- predict(tree, newdata = d[folds == fold_i,] , vcov = FALSE)
-    predscoef <- predict(tree, newdata = d[folds == fold_i,] , vcov = FALSE, log = TRUE, ref = 1)
+    preds <- predict(tree, newdata = d[folds == fold_i,] , vcov = F)
+    #predict worth parameters, input for Log-likelihood
+    preds2 <- predict(tree, newdata = d[folds == fold_i,] , vcov = FALSE, log = TRUE, ref = 1)
     
     preds_index <- as.integer(rownames(preds))
-    
     
     #"shrink" observed ranks
     obs_index <- index_observed[index_observed %in% preds_index] #inside i-th fold and inside preds
@@ -334,21 +272,22 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     
     #"expand" predicted coef 
     match_index <- match(obs_index, preds_index)
+    
     predicted_expanded <- preds[match_index,]
     
-    predicted_expanded_coef <- predscoef[match_index,]
+    predicted_expanded2 <- preds2[match_index,]
     
     #calculate correlation by comparing predicted test data with observed test data
     r <- get_tau(predicted_expanded, observed_shrunk) 
     taus[i] <- r[1]
     
     #calculate lo likelihood by comparing predicted test with observed test data
-    l <- get_logLik(observed_shrunk, predicted_expanded_coef)
+    l <- get_logLik(observed_shrunk, predicted_expanded2)
     logliks[i] <- l
     
     Ns_effective[i] <- r[2]
     
-    if(verbose) cat("Fold ", i, " completed. Negative Log-Likelihood: ", l , "\n")
+    if(verbose) cat("Fold ", i, " completed. Kendall's correlation: ", r[1], ". Log-likelihood: ", l, "\n")
     
   }
   
@@ -360,10 +299,12 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   # In k-fold cross-validation, this will slightly correct if n/k is not a round number
   # It will not affect the tau value if n/k is a round number
   foldsize <- table(folds)
-  # average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
-  average_tau <- mean(taus, na.rm = TRUE)
+  average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  #average_tau <- mean(taus, na.rm = TRUE)
   
-  average_loglik <- mean(logliks, na.rm = TRUE)
+  average_loglik <- sum(logliks * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  
+  #average_loglik <- mean(logliks, na.rm = TRUE)
   
   # The Z score is calculated from the average tau
   # N is taken as total N_effective, taking into account that not all were compared to all
@@ -371,9 +312,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   N_effective <- sum(Ns_effective, na.rm = TRUE)
   z_score <- average_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
   
-  result <- list(folds = folds, taus = taus, logliks = logliks, foldsize = foldsize, 
-                 average_loglik = average_loglik, average_tau = average_tau, 
-                 z_score = z_score, N_effective = N_effective)
+  result <- list(call = formula,
+                 folds=folds, foldsize = foldsize,
+                 taus=taus, logliks = logliks,
+                 average_tau = average_tau, average_loglik = average_loglik,
+                 z_score=z_score, N_effective=N_effective)
   
   return(result)
   
@@ -502,6 +445,59 @@ create_portfolio <- function(ensemble, newdata, n, digits=5)
 
 
 #crap code ####
+
+
+# #Function that sends i-fold vector (assigning to inside and outside of fold) of length n to nodes and gets back predictions for the i-fold test set
+# #It then aggregates the predictions and calculates the tau
+# pltree_ensemble <- function(train, cluster, ntrees)
+# {
+#   
+#   #Export train, which is what changes (different fold)
+#   clusterExport(cluster, "train", envir = environment())
+#   
+#   #Create function to combine prediction matrices into 3-dimensional array
+#   #Idea obtained from here:
+#   #https://stackoverflow.com/questions/17570806/parallel-for-loop-with-an-array-as-output
+#   acomb <- function(...) abind(..., along = 3)
+#   
+#   #Function that creates a prediction array for the test fold
+#   #Array of 3 dimensions: farms (rows), varieties (columns) and trees (third dimension)
+#   f1 <- function(formula, dat, minsize, npseudo, alpha, newdata) {
+#     
+#     m <- do.call("pltree", list(formula = formula, 
+#                                 data = dat,
+#                                 minsize = minsize,
+#                                 npseudo = npseudo,
+#                                 alpha = alpha))
+#     
+#     pp <- predict(object=m, newdata = newdata)
+#     
+#     return(pp)
+#     
+#   }
+#   
+#   #get predictions for test from nodes and put in matrix (foreach)
+#   preds <- foreach(j = 1:ntrees, 
+#                    .combine=acomb,
+#                    .packages=c("PlackettLuce")) %dopar% (
+#                      
+#                      f1(formula = formula, 
+#                         dat = d[sample(which(train), size = sum(train), replace=TRUE),], 
+#                         minsize = minsize,
+#                         npseudo = npseudo,
+#                         alpha = alpha,
+#                         newdata = d[!train,])
+#                      
+#                    )
+#   
+#   #get average prediction for test fold 
+#   #averaging probability of winning across trees
+#   preds_matrix <- apply(preds, c(1,2), mean)
+#   
+#   return(preds_matrix)
+#   
+# }
+
 
 # #Take samples for bagging
 # #require(PlackettLuce)
