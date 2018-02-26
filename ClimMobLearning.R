@@ -299,12 +299,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   # In k-fold cross-validation, this will slightly correct if n/k is not a round number
   # It will not affect the tau value if n/k is a round number
   foldsize <- table(folds)
-  average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
-  #average_tau <- mean(taus, na.rm = TRUE)
+  #average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  average_tau <- mean(taus, na.rm = TRUE)
   
-  average_loglik <- sum(logliks * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
-  
-  #average_loglik <- mean(logliks, na.rm = TRUE)
+  #average_loglik <- sum(logliks * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  average_loglik <- mean(logliks, na.rm = TRUE)
   
   # The Z score is calculated from the average tau
   # N is taken as total N_effective, taking into account that not all were compared to all
@@ -312,11 +311,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   N_effective <- sum(Ns_effective, na.rm = TRUE)
   z_score <- average_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
   
-  result <- list(call = formula,
-                 folds=folds, foldsize = foldsize,
-                 taus=taus, logliks = logliks,
+  result <- list(call = deparse(formula),
                  average_tau = average_tau, average_loglik = average_loglik,
-                 z_score=z_score, N_effective=N_effective)
+                 taus=taus, logliks = logliks,
+                 z_score=z_score, N_effective=N_effective,
+                 folds=folds, foldsize = foldsize)
   
   return(result)
   
