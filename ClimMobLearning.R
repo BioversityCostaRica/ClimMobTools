@@ -4,6 +4,7 @@
 #Updated in 19 Feb 2018
 
 library(PlackettLuce)
+library(psychotree)
 library(foreach)
 library(doParallel)
 library(abind)
@@ -181,29 +182,30 @@ get_logLik <- function(observedrank, coeff)
 
 # example("beans", package = "PlackettLuce")
 # G <- grouped_rankings(R, rep(seq_len(nrow(beans)), 4))
-# weights <- c(rep(0.3, 400), rep(1, 442))
-# 
-# # formula <- as.formula(G ~ P1)
-# formula <- as.formula(paste0(c("G ~ "), paste(vtest, collapse = " + ")))
-# d <- mydata
-# folds <- as.integer(mydata$season)
+# formula <- as.formula("G ~ P1")
+# d <- mydata#cbind(G, beans)
+# d$P1 <- 1
+# n <- nrow(d)
+# folds <- as.integer(d$season)
 # k <- max(folds)
-# minsize <- 50
-# alpha <- 0.01
+# minsize <- 15
+# alpha <- 0.05
 # bonferroni <- TRUE
 # verbose <- TRUE
-# PL.weights <- test.weights
+# PL.weights <- 1 # runif(n, 0.9, 1.5)
+# lambda <- 0.02
+
 
 crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50, 
                                  alpha = 0.05, bonferroni = TRUE, 
-                                 verbose = TRUE, PL.weights = 1, lambda = 0, ...) #npseudo=0, cluster, ntrees = 25, ...)
+                                 PL.weights = 1, lambda = 0, verbose = TRUE, ...)
 {
   
   #Create folds if needed, check length if given
   n <- nrow(d)
   if(is.null(folds)){
     
-    folds <- sample(rep(1:k, times=ceiling(n/k), length.out=n), replace=FALSE)
+    folds <- sample(rep(1:k, times = ceiling(n/k), length.out = n), replace=FALSE)
     
   } else{
     
@@ -214,7 +216,7 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   #Setting up things for the loop
   #rs as an empty vector, which will be filled in the loop with correlation coefficients
   taus <- rep(NA, times = k)
-  logliks <- rep(NA, times = k)
+  AICs <- rep(NA, times = k)
   Ns_effective <- rep(NA, times = k)
   
   #Prepare matrix with observations to later compare with predictions for each fold
@@ -223,11 +225,6 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   observed <- observed[1:length(observed),, as.grouped_rankings = FALSE]
   observed[observed == 0] <- NA
   
-  
-  #These objects are sent to the worker nodes only once, and then used in every iteration
-  #Only the train vector changes and is sent to the nodes for every fold (done inside the pltree_ensemble function)
-  #clusterExport(cluster, c("formula", "d", "minsize", "npseudo", "alpha"), envir = environment())
-  
   for(i in 1:k){
     
     if(verbose) cat("Starting fold ", i, " of ", k, " folds. Time: ", date(), "\n")
@@ -235,11 +232,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     fold_i <- i
     
     #The train and test part change in every iteration
-    #train <- folds != i
-    train <- d[folds != fold_i,]
+    train <- d[folds != fold_i , ]
+    test  <- d[folds == fold_i , ]
     
     if(is.matrix(PL.weights)){
-      weights_i <- as.vector(na.omit(PL.weights[ , fold_i]))  #as.vector(PL.weights[[ fold_i ]])
+      weights_i <- as.vector(na.omit(PL.weights[ , fold_i]))  
       weights_i <- weights_i ^ lambda
     }else{
       weights_i <- rep(1, times = nrow(train))
@@ -249,21 +246,22 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     tree <- do.call(pltree,
                     list(formula = formula,
                          data = train, minsize = minsize, alpha = alpha,
-                         weights = weights_i , bonferroni = bonferroni))
+                         bonferroni = bonferroni, weights = weights_i))
 
-    #Use PL tree ensemble on the train data to create a prediction of the test part of the data
+    #Use PL tree ensemble on the train data to calculate AIC and to create a prediction of the test part of the data
     #Output is a matrix with predictions with cases in the rownames
     #Some rows with lacking data may have dropped, so we spend some effort on reformatting
     #observed and predicted matrices to make them match
-    # preds <- pltree_ensemble(train = train, cluster = cluster, ntrees = ntrees)
+
+    #calculate AIC 
+    aic_i <- AIC(tree, newdata = test)
+    #add to AICs vector
+    AICs[fold_i] <- aic_i
     
- 
     
     #predict over test data
-    preds <- predict(tree, newdata = d[folds == fold_i,] , vcov = F)
-    #predict worth parameters, input for Log-likelihood
-    preds2 <- predict(tree, newdata = d[folds == fold_i,] , vcov = FALSE, log = TRUE, ref = 1)
-    
+    preds <- predict(tree, newdata = test)
+
     preds_index <- as.integer(rownames(preds))
     
     #"shrink" observed ranks
@@ -275,19 +273,13 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     
     predicted_expanded <- preds[match_index,]
     
-    predicted_expanded2 <- preds2[match_index,]
-    
     #calculate correlation by comparing predicted test data with observed test data
     r <- get_tau(predicted_expanded, observed_shrunk) 
-    taus[i] <- r[1]
+    taus[fold_i] <- r[1]
+
+    Ns_effective[fold_i] <- r[2]
     
-    #calculate lo likelihood by comparing predicted test with observed test data
-    l <- get_logLik(observed_shrunk, predicted_expanded2)
-    logliks[i] <- l
-    
-    Ns_effective[i] <- r[2]
-    
-    if(verbose) cat("Fold ", i, " completed. Kendall's correlation: ", r[1], ". Log-likelihood: ", l, "\n")
+    if(verbose) cat("Fold ", fold_i, " completed. AIC: ", aic_i, ". Kendall's correlation: ", r[1], "\n")
     
   }
   
@@ -299,11 +291,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   # In k-fold cross-validation, this will slightly correct if n/k is not a round number
   # It will not affect the tau value if n/k is a round number
   foldsize <- table(folds)
-  #average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
-  average_tau <- mean(taus, na.rm = TRUE)
+  average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  #average_tau <- mean(taus, na.rm = TRUE)
   
-  #average_loglik <- sum(logliks * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
-  average_loglik <- mean(logliks, na.rm = TRUE)
+  average_aic <- sum(AICs * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  #average_aic <- mean(AICs, na.rm = TRUE)
   
   # The Z score is calculated from the average tau
   # N is taken as total N_effective, taking into account that not all were compared to all
@@ -312,14 +304,15 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   z_score <- average_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
   
   result <- list(call = deparse(formula),
-                 average_tau = average_tau, average_loglik = average_loglik,
-                 taus=taus, logliks = logliks,
-                 z_score=z_score, N_effective=N_effective,
-                 folds=folds, foldsize = foldsize)
+                 avg.KendallTau = average_tau, avg.AIC = average_aic,
+                 KendallTau = taus, AIC = AICs,
+                 z_score = z_score, N_effective = N_effective,
+                 folds = folds, foldsize = foldsize)
   
   return(result)
   
 }
+
 
 
 #Predict function that works for a PL tree ensemble
