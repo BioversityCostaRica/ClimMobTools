@@ -142,7 +142,7 @@ get_tau <- function(predictedcoef, observedrank, ...)
 
 #Calculate Log-Likelihood from predicted coefficients
 get_logLik <- function(observedrank, coeff)
-{
+  {
   
   x <- observedrank
   cc <- coeff
@@ -233,6 +233,22 @@ AIC.pltree <- function(object, newdata = NULL, ...)
   -2*sum(LL) + 2*attr(logLik(object), "df")
 }
 
+
+#this fucntion calculate Akaike weights/relative likelihoods/delta-AICs 
+#took from R package qpcR wich is not working in our server
+
+
+AIC.weights <- function(x)
+  {
+  x <- x[!is.na(x)]
+  delta.aic <- x - min(x, na.rm = TRUE)
+  rel.LL <- exp(-0.5 * delta.aic)
+  sum.LL <- sum(rel.LL, na.rm = TRUE)
+  weights.aic <- rel.LL/sum.LL
+  return(list(deltaAIC = delta.aic, rel.LL = rel.LL, weights = weights.aic))
+  
+}
+
 # example("beans", package = "PlackettLuce")
 # G <- grouped_rankings(R, rep(seq_len(nrow(beans)), 4))
 # formula <- as.formula("G ~ P1")
@@ -251,9 +267,8 @@ AIC.pltree <- function(object, newdata = NULL, ...)
 
 crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50, 
                                  alpha = 0.05, bonferroni = TRUE, 
-                                 PL.weights = 1, lambda = 0, verbose = TRUE, ...)
+                                 PL.weights = 1, lambda = 0, mean.method = NULL, verbose = TRUE, ...)
 {
-  
   #Create folds if needed, check length if given
   n <- nrow(d)
   if(is.null(folds)){
@@ -266,6 +281,10 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     
   }
   
+  #validate mean.method 
+  if(is.null(mean.method)) {mean.method = "stouffer"}
+  mean.opt <- c("stouffer", "foldsize","equal")
+  if(sum(mean.opt==mean.method) == 0) stop("Invalid method to calculate mean. Options are stouffer, foldsize or equal")
   #Setting up things for the loop
   #rs as an empty vector, which will be filled in the loop with correlation coefficients
   taus <- rep(NA, times = k)
@@ -343,21 +362,43 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   # In blocked cross-validation, folds can be of unequal size
   # In k-fold cross-validation, this will slightly correct if n/k is not a round number
   # It will not affect the tau value if n/k is a round number
-  foldsize <- table(folds)
-  average_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
-  #average_tau <- mean(taus, na.rm = TRUE)
+  if(mean.method=="equal"){
+    
+    mean_tau <- mean(taus, na.rm = TRUE)
+    mean_aic <- mean(AICs, na.rm = TRUE)
+    
+  }
   
-  average_aic <- sum(AICs * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
-  #average_aic <- mean(AICs, na.rm = TRUE)
+  foldsize <- table(folds)
+  
+  if(mean.method=="foldsize"){
+    mean_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+    mean_aic <- sum(AICs * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+  }
+  
+  if(mean.method=="stouffer"){
+    #calculate weights of foldsize 
+    wfold <- sqrt(as.vector(foldsize)/n)
+    #normalise to sum 1
+    wfold <- wfold/sum(wfold)
+    #mean tau
+    mean_tau <- taus * wfold
+    mean_tau <- sum(mean_tau)
+    #mean aic
+    mean_aic <- AICs * wfold
+    mean_aic <- sum(mean_aic)
+    
+    
+  }
   
   # The Z score is calculated from the average tau
   # N is taken as total N_effective, taking into account that not all were compared to all
   # Calculation of Z score follows: Abdi, H., 2007. The Kendall rank correlation coefficient. Encyclopedia of Measurement and Statistics. Sage, Thousand Oaks, CA, pp.508-510.
   N_effective <- sum(Ns_effective, na.rm = TRUE)
-  z_score <- average_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
+  z_score <- mean_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
   
   result <- list(call = deparse(formula),
-                 avg.KendallTau = average_tau, avg.AIC = average_aic,
+                 mean.KendallTau = mean_tau, mean.AIC = mean_aic,
                  KendallTau = taus, AIC = AICs,
                  z_score = z_score, N_effective = N_effective,
                  folds = folds, foldsize = foldsize)
