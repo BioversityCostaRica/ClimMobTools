@@ -3,8 +3,9 @@
 #First run 31 Nov 2017
 #Updated in 19 Feb 2018
 
-library(PlackettLuce)
+library(partykit)
 library(psychotree)
+library(PlackettLuce)
 library(foreach)
 library(doParallel)
 library(abind)
@@ -230,15 +231,67 @@ AIC.pltree <- function(object, newdata = NULL, ...)
   }
   # compute AIC based on total log likelihood of data
   # and df of original model fit
-  -2*sum(LL) + 2*attr(logLik(object), "df")
+  return(-2*sum(LL) + 2*attr(logLik(object), "df"))
 }
 
 
+#Calculate the deviance
+deviance.pltree <- function(object, newdata = NULL, ...)
+  {
+  if (is.null(newdata)) {
+    return(NextMethod(object, ...))
+  }
+  # create model.frame from newdata
+  response <- as.character(formula(object)[[2]])
+  if (!response %in% colnames(newdata))
+    stop("`newdata` must include response")
+  f <- formula(object)
+  environment(f) <- parent.frame()
+  newdata <- model.frame(f, data = newdata, ...)
+  # predict node for each grouped ranking
+  node <- partykit::predict.modelparty(object,
+                                       newdata = newdata,
+                                       type = "node")
+  # set up to refit models based on newdata
+  cf <- psychotools::itempar(object)
+  if(is.null(row.names(cf))) cf <- t(as.matrix(cf)) #added to fix bug when there is only one node
+  
+  nodes <- partykit::nodeids(object, terminal = TRUE) #added this instead of rownames(cf)
+  
+  dots <- object$info$dots
+  
+  G <- model.response(newdata)
+  
+  w <- model.weights(newdata)
+  
+  if (is.null(w)) w <- rep.int(1, length(G))
+  
+  LL <- df <- numeric(length(nodes))
+  
+  for (i in seq_along(nodes)){
+    # fit model with coef fixed to get logLik
+    # suppress warning due to fixing maxit
+    id <- node == nodes[i]
+    if (sum(id)) {
+      fit <- suppressWarnings(
+        do.call("plfit",
+                c(list(y = G[id,],
+                       start = cf[i,],
+                       weights = w[id],
+                       maxit = 0),
+                  dots)))
+      LL[i] <- -fit$objfun
+    }
+  }
+  # compute AIC based on total log likelihood of data
+  # and df of original model fit
+  return(-2*sum(LL))
+}
+
 #this fucntion calculate Akaike weights/relative likelihoods/delta-AICs 
-#took from R package qpcR wich is not working in our server
+#took from R package qpcR whose is not working in our server
 
-
-AIC.weights <- function(x)
+akaike.weights <- function(x)
   {
   x <- x[!is.na(x)]
   delta.aic <- x - min(x, na.rm = TRUE)
@@ -286,10 +339,13 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   mean.opt <- c("stouffer", "foldsize","equal")
   if(sum(mean.opt==mean.method) == 0) stop("Invalid method to calculate mean. Options are stouffer, foldsize or equal")
   #Setting up things for the loop
-  #rs as an empty vector, which will be filled in the loop with correlation coefficients
-  taus <- rep(NA, times = k)
-  AICs <- rep(NA, times = k)
-  Ns_effective <- rep(NA, times = k)
+  #empty vectors, which will be filled in the loop with correlation coefficients
+  taus <- rep(NA, times = k) #add Kendall tau from each fold
+  AICs <- rep(NA, times = k) #add AIC 
+  deviance <- rep(NA, times = k) #add deviance
+  Ns_effective <- rep(NA, times = k) #add n effective 
+  pltrees <- list() #add fitted PL tree
+  inernodes <- rep(NA, times = k) #add number of inernodes
   
   #Prepare matrix with observations to later compare with predictions for each fold
   observed <- d$G[1:length(d$G),, as.grouped_rankings = TRUE]
@@ -319,6 +375,12 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
                     list(formula = formula,
                          data = train, minsize = minsize, alpha = alpha,
                          bonferroni = bonferroni, weights = weights_i))
+    
+    #add to list of trees
+    pltrees[[fold_i]] <- tree
+    
+    #inernodes
+    inernodes[fold_i] <- partykit::nodeids(tree, terminal = TRUE)
 
     #Use PL tree ensemble on the train data to calculate AIC and to create a prediction of the test part of the data
     #Output is a matrix with predictions with cases in the rownames
@@ -329,6 +391,12 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     aic_i <- AIC.pltree(tree, newdata = test)
     #add to AICs vector
     AICs[fold_i] <- aic_i
+    
+    
+    #calculate deviance 
+    deviance_i <- deviance.pltree(tree, newdata = test)
+    #add to deviance vector
+    deviance[fold_i] <- deviance_i
     
     
     #predict over test data
@@ -351,7 +419,7 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
 
     Ns_effective[fold_i] <- r[2]
     
-    if(verbose) cat("Fold ", fold_i, " completed. AIC: ", aic_i, ". Kendall's correlation: ", r[1], "\n")
+    if(verbose) cat("Fold ", fold_i, " completed. AIC: ", aic_i, ". Kendall's correlation: ", r[1], ". Inernodes: ", inernodes[fold_i] , "\n")
     
   }
   
@@ -366,7 +434,7 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     
     mean_tau <- mean(taus, na.rm = TRUE)
     mean_aic <- mean(AICs, na.rm = TRUE)
-    
+    mean_deviance <- mean(deviance, na.rm = TRUE)
   }
   
   foldsize <- table(folds)
@@ -374,6 +442,7 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   if(mean.method=="foldsize"){
     mean_tau <- sum(taus * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
     mean_aic <- sum(AICs * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
+    mean_deviance <- sum(deviance * as.vector(foldsize), na.rm = TRUE) / sum(foldsize, na.rm = TRUE)
   }
   
   if(mean.method=="stouffer"){
@@ -387,8 +456,9 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     #mean aic
     mean_aic <- AICs * wfold
     mean_aic <- sum(mean_aic)
-    
-    
+    #mean deviance
+    mean_deviance <- deviance * wfold
+    mean_deviance <- sum(mean_deviance)
   }
   
   # The Z score is calculated from the average tau
@@ -397,11 +467,11 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
   N_effective <- sum(Ns_effective, na.rm = TRUE)
   z_score <- mean_tau / sqrt((4*N_effective + 10)/((9*N_effective)*(N_effective-1)))
   
-  result <- list(call = deparse(formula),
-                 mean.KendallTau = mean_tau, mean.AIC = mean_aic,
-                 KendallTau = taus, AIC = AICs,
+  result <- list(call = deparse(formula, width.cutoff = 500),
+                 mean.KendallTau = mean_tau, mean.AIC = mean_aic, mean.deviance = mean_deviance,
+                 KendallTau = taus, AIC = AICs, deviance = deviance,
                  z_score = z_score, N_effective = N_effective,
-                 folds = folds, foldsize = foldsize)
+                 folds = folds, foldsize = foldsize, pltrees = pltrees, inernodes = inernodes)
   
   return(result)
   
