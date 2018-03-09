@@ -1,7 +1,7 @@
 #FUNCTIONS FOR DATA LEARNING AND PORTFOLIOS CONTRUCTIONS USING CROWDSOURCING DATA
 #Jacob van Etten, Kaue de Sousa, Heather Turner 
-#First run 31 Nov 2017
-#Updated in 19 Feb 2018
+#First run 31Nov2017
+#Updated in 09Mar2018
 
 library(partykit)
 library(psychotree)
@@ -94,7 +94,7 @@ as.PL <- function(x, local = FALSE, additional.rank = TRUE)
 #k-fold cross-validation with PL trees
 #Calculate correlation coefficient
 get_tau <- function(predictedcoef, observedrank, ...)
-{
+  {
   
   nr1 <- nrow(predictedcoef)
   nr2 <- nrow(observedrank)
@@ -314,13 +314,14 @@ akaike.weights <- function(x)
 # alpha <- 0.05
 # bonferroni <- TRUE
 # verbose <- TRUE
-# PL.weights <- 1 # runif(n, 0.9, 1.5)
+# weights <- 1 # runif(n, 0.9, 1.5)
 # lambda <- 0.02
 
 
 crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50, 
                                  alpha = 0.05, bonferroni = TRUE, 
-                                 PL.weights = 1, lambda = 0, mean.method = NULL, verbose = TRUE, ...)
+                                 weights = NULL, lambda = 0, 
+                                 mean.method = NULL, npseudo = 0.5, verbose = TRUE, ...)
 {
   #Create folds if needed, check length if given
   n <- nrow(d)
@@ -363,18 +364,17 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     train <- d[folds != fold_i , ]
     test  <- d[folds == fold_i , ]
     
-    if(is.matrix(PL.weights)){
-      weights_i <- as.vector(na.omit(PL.weights[ , fold_i]))  
-      weights_i <- weights_i ^ lambda
+    if(is.null(weights)){
+      weights_i <- NULL
     }else{
-      weights_i <- rep(1, times = nrow(train))
-      
+      weights_i <- as.vector(na.omit(weights[ , fold_i]))  
+      weights_i <- weights_i ^ lambda
     }
     
     tree <- do.call(pltree,
                     list(formula = formula,
                          data = train, minsize = minsize, alpha = alpha,
-                         bonferroni = bonferroni, weights = weights_i))
+                         bonferroni = bonferroni, weights = weights_i, npseudo = npseudo))
     
     #add to list of trees
     pltrees[[fold_i]] <- tree
