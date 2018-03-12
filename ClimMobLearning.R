@@ -479,6 +479,29 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
 
 
 
+#Create function to combine prediction matrices into 3-dimensional array
+#Idea obtained from here:
+#https://stackoverflow.com/questions/17570806/parallel-for-loop-with-an-array-as-output
+acomb <- function(...) abind(..., along = 1, force.array = FALSE)
+
+#Function that creates a prediction matrix with 
+f1 <- function(formula, d, minsize, alpha, k, folds, bonferroni, weights, npseudo, lambda) {
+  
+  m <- do.call("crossvalidation_PLTE", list(formula = formula,
+                                            d = mydata,
+                                            k = k, folds = folds, minsize = minsize, 
+                                            alpha = alpha, bonferroni = bonferroni,
+                                            weights = weights, npseudo = npseudo, lambda = lambda))
+  
+  result <- t(as.matrix(c(m$deviance, m$inernodes, m$mean.KendallTau, m$call)))
+  
+  return( result )
+  
+}
+
+
+
+
 #Predict function that works for a PL tree ensemble
 #Aggregating is done by taking the mean
 #x is a list of PL trees (ensemble)
