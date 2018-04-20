@@ -182,112 +182,6 @@ get_logLik <- function(observedrank, coeff)
 }
 
 
-AIC.pltree <- function(object, newdata = NULL, ...)
-  {
-  if (is.null(newdata)) {
-    return(NextMethod(object, ...))
-  }
-  # create model.frame from newdata
-  response <- as.character(formula(object)[[2]])
-  if (!response %in% colnames(newdata))
-    stop("`newdata` must include response")
-  f <- formula(object)
-  environment(f) <- parent.frame()
-  newdata <- model.frame(f, data = newdata, ...)
-  # predict node for each grouped ranking
-  node <- partykit::predict.modelparty(object,
-                                       newdata = newdata,
-                                       type = "node")
-  # set up to refit models based on newdata
-  cf <- psychotools::itempar(object)
-  if(is.null(row.names(cf))) cf <- t(as.matrix(cf)) #added to fix bug when there is only one node
-  
-  nodes <- partykit::nodeids(object, terminal = TRUE) #added this instead of rownames(cf)
-  
-  dots <- object$info$dots
-  
-  G <- model.response(newdata)
-  
-  w <- model.weights(newdata)
-  
-  if (is.null(w)) w <- rep.int(1, length(G))
-  
-  LL <- df <- numeric(length(nodes))
-  
-  for (i in seq_along(nodes)){
-    # fit model with coef fixed to get logLik
-    # suppress warning due to fixing maxit
-    id <- node == nodes[i]
-    if (sum(id)) {
-      fit <- suppressWarnings(
-        do.call("plfit",
-                c(list(y = G[id,],
-                       start = cf[i,],
-                       weights = w[id],
-                       maxit = 0),
-                  dots)))
-      LL[i] <- -fit$objfun
-    }
-  }
-  # compute AIC based on total log likelihood of data
-  # and df of original model fit
-  return(-2*sum(LL) + 2*attr(logLik(object), "df"))
-}
-
-
-#Calculate the deviance
-deviance.pltree <- function(object, newdata = NULL, ...)
-  {
-  if (is.null(newdata)) {
-    return(NextMethod(object, ...))
-  }
-  # create model.frame from newdata
-  response <- as.character(formula(object)[[2]])
-  if (!response %in% colnames(newdata))
-    stop("`newdata` must include response")
-  f <- formula(object)
-  environment(f) <- parent.frame()
-  newdata <- model.frame(f, data = newdata, ...)
-  # predict node for each grouped ranking
-  node <- partykit::predict.modelparty(object,
-                                       newdata = newdata,
-                                       type = "node")
-  # set up to refit models based on newdata
-  cf <- psychotools::itempar(object)
-  if(is.null(row.names(cf))) cf <- t(as.matrix(cf)) #added to fix bug when there is only one node
-  
-  nodes <- partykit::nodeids(object, terminal = TRUE) #added this instead of rownames(cf)
-  
-  dots <- object$info$dots
-  
-  G <- model.response(newdata)
-  
-  w <- model.weights(newdata)
-  
-  if (is.null(w)) w <- rep.int(1, length(G))
-  
-  LL <- df <- numeric(length(nodes))
-  
-  for (i in seq_along(nodes)){
-    # fit model with coef fixed to get logLik
-    # suppress warning due to fixing maxit
-    id <- node == nodes[i]
-    if (sum(id)) {
-      fit <- suppressWarnings(
-        do.call("plfit",
-                c(list(y = G[id,],
-                       start = cf[i,],
-                       weights = w[id],
-                       maxit = 0),
-                  dots)))
-      LL[i] <- -fit$objfun
-    }
-  }
-  # compute AIC based on total log likelihood of data
-  # and df of original model fit
-  return(-2*sum(LL))
-}
-
 #this fucntion calculate Akaike weights/relative likelihoods/delta-AICs 
 #took from R package qpcR whose is not working in our server
 
@@ -388,13 +282,13 @@ crossvalidation_PLTE <- function(formula, d, k = 10, folds = NULL, minsize = 50,
     #observed and predicted matrices to make them match
 
     #calculate AIC 
-    aic_i <- AIC.pltree(tree, newdata = test)
+    aic_i <- AIC(tree, newdata = test)
     #add to AICs vector
     AICs[fold_i] <- aic_i
     
     
     #calculate deviance 
-    deviance_i <- deviance.pltree(tree, newdata = test)
+    deviance_i <- deviance(tree, newdata = test)
     #add to deviance vector
     deviance[fold_i] <- deviance_i
     

@@ -50,6 +50,20 @@ get.GDD <- function(X, gdd = NULL, gdd.base = 10)
 #ts = an integer indicating the timespan for MLDS calculation
 #index = character especifying the required indices, if null all available indices are calculated 
 #return a data frame with especified temperature indices
+# maxDT: maximun day temperature (°C)
+# minDT: minimum day temperature (°C)
+# maxNT: maximum night temperature (°C)
+# minNT: minimum night temperature (°C)
+# DTx25: days with temperature 25 >= T < 30 °C (days)
+# DTx30: days with temperature 30 >= T < 35 °C
+# DTX35: days with temperature T >= 35 °C
+# NTb10: nights with temperature T < 10 °C
+# NTx10: nights with temperature 10 >= T < 15 °C
+# NTx15: nights with temperature 15 >= T < 20 °C
+# NTx20: nights with temperature T >= 20 °C
+# DTR: daily temperature range (max temperature - min temperature)
+# NTR: night temperature range (max temperature - min temperature)
+
 temp.index <- function(X, ts = NULL, index = NULL)
   {
   n <- dim(X)[1]
@@ -61,7 +75,7 @@ temp.index <- function(X, ts = NULL, index = NULL)
                               dimnames = list(NULL, index)))
     }
   
-  if(!is.na(match("maxDT", names(ind) ))) ind["maxDT"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximun day temperature
+  if(!is.na(match("maxDT", names(ind) ))) ind["maxDT"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximun day temperature (°C)
   if(!is.na(match("minDT", names(ind) ))) ind["minDT"] <- apply(X[,,1], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum day temperature
   if(!is.na(match("maxNT", names(ind) ))) ind["maxNT"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximum night temperature
   if(!is.na(match("minNT", names(ind) ))) ind["minNT"] <- apply(X[,,2], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum night temperature
@@ -133,6 +147,17 @@ get.Rx5day <- function(X, ts = NULL)
 #ts = an integer indicating the timespan for MLDS calculation
 #index = character especifying the required indices, if null all available indices are calculated 
 #return a data frame with especified rainfall indices
+# MLDS: maximum length of consecutive dry days (< 1 mm)
+# MLWS: maximum length of consecutive wet days (>= 1 mm)
+# R5mm: days with  rainfall 5 >= R < 10 mm
+# R10mm: days with  rainfall 10 >= R < 15 mm
+# R20mm: days with  rainfall R > 20 mm
+# SDII: simple rainfall intensity index (mean of wet days / total rainfall)
+# Rx1day: maximum 1-day rainfall (mm)
+# Rx5day: maximum 5-day rainfall (mm)
+# Rtotal: total rainfall (mm) in wet days (R >= 1)
+
+
 rainfall.index <- function(X, ts = NULL, index = NULL)
   {
   n <- dim(X)[1]
