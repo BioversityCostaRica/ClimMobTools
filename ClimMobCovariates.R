@@ -1,7 +1,7 @@
 #Tools for environmental data gathering
-#Kauê de Sousa 
+#Kaue de Sousa 
 #First run 31 Nov 2017
-#Updated in 01 Feb 2018
+#Updated in 03 May 2018
 
 
 # Tools for environmental data gathering ####
@@ -50,17 +50,17 @@ get.GDD <- function(X, gdd = NULL, gdd.base = 10)
 #ts = an integer indicating the timespan for MLDS calculation
 #index = character especifying the required indices, if null all available indices are calculated 
 #return a data frame with especified temperature indices
-# maxDT: maximun day temperature (°C)
-# minDT: minimum day temperature (°C)
-# maxNT: maximum night temperature (°C)
-# minNT: minimum night temperature (°C)
-# DTx25: days with temperature 25 >= T < 30 °C (days)
-# DTx30: days with temperature 30 >= T < 35 °C
-# DTX35: days with temperature T >= 35 °C
-# NTb10: nights with temperature T < 10 °C
-# NTx10: nights with temperature 10 >= T < 15 °C
-# NTx15: nights with temperature 15 >= T < 20 °C
-# NTx20: nights with temperature T >= 20 °C
+# maxDT: maximun day temperature (Â°C)
+# minDT: minimum day temperature (Â°C)
+# maxNT: maximum night temperature (Â°C)
+# minNT: minimum night temperature (Â°C)
+# DTx25: days with temperature 25 >= T < 30 Â°C (days)
+# DTx30: days with temperature 30 >= T < 35 Â°C
+# DTX35: days with temperature T >= 35 Â°C
+# NTb10: nights with temperature T < 10 Â°C
+# NTx10: nights with temperature 10 >= T < 15 Â°C
+# NTx15: nights with temperature 15 >= T < 20 Â°C
+# NTx20: nights with temperature T >= 20 Â°C
 # DTR: daily temperature range (max temperature - min temperature)
 # NTR: night temperature range (max temperature - min temperature)
 
@@ -75,7 +75,7 @@ temp.index <- function(X, ts = NULL, index = NULL)
                               dimnames = list(NULL, index)))
     }
   
-  if(!is.na(match("maxDT", names(ind) ))) ind["maxDT"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximun day temperature (°C)
+  if(!is.na(match("maxDT", names(ind) ))) ind["maxDT"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximun day temperature (Â°C)
   if(!is.na(match("minDT", names(ind) ))) ind["minDT"] <- apply(X[,,1], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum day temperature
   if(!is.na(match("maxNT", names(ind) ))) ind["maxNT"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximum night temperature
   if(!is.na(match("minNT", names(ind) ))) ind["minNT"] <- apply(X[,,2], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum night temperature
@@ -116,7 +116,7 @@ get.MLDS <- function(X, ts = NULL)
 #function return an integer with MLWS index
 get.MLWS <- function(X, ts = NULL)
   {
-  MLWS <- apply(precip, 1, function(X){
+  MLWS <- apply(X, 1, function(X){
     Y <- X[1:ts]
     Y <- ifelse(Y >= 1, 0, runif(length(Y), min=2, max=10))
     return(max(rle(Y)$lengths))
