@@ -1,7 +1,7 @@
 #Tools for environmental data gathering
 #Kaue de Sousa 
 #First run 31 Nov 2017
-#Updated in 04 May 2018
+#Updated in 08 May 2018
 
 
 # Tools for environmental data gathering ####
@@ -70,7 +70,7 @@ temp.index <- function(X, ts = NULL, index = NULL)
   if(is.null(index)) {
     ind <- as_tibble(matrix(nrow = n, ncol = 15,
                      dimnames = list(NULL, 
-                                     c("maxDT","minDT","maxNT","minNT","DTx25","DTx30","DTX35","NTb10","NTx10","NTx15","NTx20","DTR","NTR","maxDNTR","sdDNTR"))))
+                                     c("maxDT","minDT","maxNT","minNT","DTx25","DTx30","DTX35","NTb10","NTx10","NTx15","NTx20","DTR","NTR","max24TC","sd24TC"))))
   }else{
       ind <- as_tibble(matrix(nrow = n, ncol = length(index),
                               dimnames = list(NULL, index)))
@@ -89,8 +89,8 @@ temp.index <- function(X, ts = NULL, index = NULL)
   if(!is.na(match("NTx20", names(ind) ))) ind["NTx20"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] >= 20, na.rm=TRUE)) #nights with temperature above 20 C
   if(!is.na(match("DTR", names(ind) ))) ind["DTR"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #daily temperature range max temperature - min temperature
   if(!is.na(match("NTR", names(ind) ))) ind["NTR"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #night temperature range max temperature - min temperature
-  if(!is.na(match("maxDNTR", names(ind) ))) ind["maxDNTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) max(X[1:ts], na.rm = TRUE) ) #maximum observed difference between day and night temperature C 
-  if(!is.na(match("sdDNTR", names(ind) ))) ind["sdDNTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) sd(X[1:ts], na.rm = TRUE) ) #standard deviation difference between                                                                  
+  if(!is.na(match("max24TC", names(ind) ))) ind["max24TC"] <- apply((X[,,1]-X[,,2]), 1, function(X) max(X[1:ts], na.rm = TRUE) ) #maximum temperature change in 24h over the period
+  if(!is.na(match("sd24TC", names(ind) ))) ind["sd24TC"] <- apply((X[,,1]-X[,,2]), 1, function(X) sd(X[1:ts], na.rm = TRUE) ) #standard deviation of max24TC                                                                 
                                                                     
   ind[is.na(ind)] <- 0 
   
