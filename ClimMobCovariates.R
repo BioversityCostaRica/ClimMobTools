@@ -54,47 +54,63 @@ get.GDD <- function(X, gdd = NULL, gdd.base = 10)
 # minDT: minimum day temperature (°C)
 # maxNT: maximum night temperature (°C)
 # minNT: minimum night temperature (°C)
-# DTx25: days with temperature 25 >= T < 30 °C (days)
-# DTx30: days with temperature 30 >= T < 35 °C
-# DTX35: days with temperature T >= 35 °C
-# NTb10: nights with temperature T < 10 °C
-# NTx10: nights with temperature 10 >= T < 15 °C
-# NTx15: nights with temperature 15 >= T < 20 °C
-# NTx20: nights with temperature T >= 20 °C
-# DTR: daily temperature range (max temperature - min temperature)
-# NTR: night temperature range (max temperature - min temperature)
+# DTR: diurnal temperature range, mean difference between DT and NT (degree Celsius)
+# maxDTR: maximum DTR C
+# sdDTR: standard deviation DTR C
+# SU: summer days, number of days with maximum temperature > 30 C
+# TR: tropical nights, number of nights with maximum temperature > 25 C
+# DTV: day temperature variation, difference between day maximum and minimum temperatures (degree Celsius) 
+# NTV: night temperature variation, difference between night maximum and minimum temperatures (degree Celsius) 
 
 temp.index <- function(X, ts = NULL, index = NULL)
   {
   n <- dim(X)[1]
   if(is.null(index)) {
-    ind <- as_tibble(matrix(nrow = n, ncol = 15,
+    ind <- as_tibble(matrix(nrow = n, ncol = 11,
                      dimnames = list(NULL, 
-                                     c("maxDT","minDT","maxNT","minNT","DTx25","DTx30","DTX35","NTb10","NTx10","NTx15","NTx20","DTR","NTR","max24TC","sd24TC"))))
+                                     c("maxDT","minDT","maxNT","minNT","SU","TR","DTR","maxDTR","sdDTR","DTV","NTV"))))
   }else{
       ind <- as_tibble(matrix(nrow = n, ncol = length(index),
                               dimnames = list(NULL, index)))
     }
   
-  if(!is.na(match("maxDT", names(ind) ))) ind["maxDT"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximun day temperature (°C)
-  if(!is.na(match("minDT", names(ind) ))) ind["minDT"] <- apply(X[,,1], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum day temperature
-  if(!is.na(match("maxNT", names(ind) ))) ind["maxNT"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximum night temperature
-  if(!is.na(match("minNT", names(ind) ))) ind["minNT"] <- apply(X[,,2], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum night temperature
-  if(!is.na(match("DTx25", names(ind) ))) ind["DTx25"] <- apply(X[,,1], 1, function(X) sum(X[1:ts] >= 25 & X[1:ts] < 30, na.rm=TRUE)) #days with maximum temperature > 25 < 30 C
-  if(!is.na(match("DTx30", names(ind) ))) ind["DTx30"] <- apply(X[,,1], 1, function(X) sum(X[1:ts] >= 30 & X[1:ts] < 35, na.rm=TRUE)) #days with maximum temperature > 30 < 35 C
-  if(!is.na(match("DTx35", names(ind) ))) ind["DTx35"] <- apply(X[,,1], 1, function(X) sum(X[1:ts] >= 35, na.rm=TRUE)) #days with maximum temperature > 35 C
-  if(!is.na(match("NTb10", names(ind) ))) ind["NTb10"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] < 10, na.rm=TRUE)) #nights with temperature bellow 10 C
-  if(!is.na(match("NTx10", names(ind) ))) ind["NTx10"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] >= 10 & X[1:ts] < 15, na.rm=TRUE)) #nights with temperature between 10-15 C
-  if(!is.na(match("NTx15", names(ind) ))) ind["NTx15"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] >= 15 & X[1:ts] < 20, na.rm=TRUE)) #nights with temperature between 15-20 C
-  if(!is.na(match("NTx20", names(ind) ))) ind["NTx20"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] >= 20, na.rm=TRUE)) #nights with temperature above 20 C
-  if(!is.na(match("DTR", names(ind) ))) ind["DTR"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #daily temperature range max temperature - min temperature
-  if(!is.na(match("NTR", names(ind) ))) ind["NTR"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #night temperature range max temperature - min temperature
-  if(!is.na(match("max24TC", names(ind) ))) ind["max24TC"] <- apply((X[,,1]-X[,,2]), 1, function(X) max(X[1:ts], na.rm = TRUE) ) #maximum temperature change in 24h over the period
-  if(!is.na(match("sd24TC", names(ind) ))) ind["sd24TC"] <- apply((X[,,1]-X[,,2]), 1, function(X) sd(X[1:ts], na.rm = TRUE) ) #standard deviation of max24TC                                                                 
-                                                                    
-  ind[is.na(ind)] <- 0 
-  
+  if(!is.na(match("maxDT", names(ind) ))) ind["maxDT"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximun day temperature (degree Celsius)
+  if(!is.na(match("minDT", names(ind) ))) ind["minDT"] <- apply(X[,,1], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum day temperature (degree Celsius)
+  if(!is.na(match("maxNT", names(ind) ))) ind["maxNT"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximum night temperature (degree Celsius)
+  if(!is.na(match("minNT", names(ind) ))) ind["minNT"] <- apply(X[,,2], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum night temperature (degree Celsius)
+  if(!is.na(match("DTR", names(ind) ))) ind["DTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) mean(X[1:ts], na.rm = TRUE) ) #diurnal temperature range, mean difference between DT and NT (degree Celsius)
+  if(!is.na(match("maxDTR", names(ind) ))) ind["maxDTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) max(X[1:ts], na.rm = TRUE) ) #maximum DTR C
+  if(!is.na(match("sdDTR", names(ind) ))) ind["sdDTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) sd(X[1:ts], na.rm = TRUE) ) #standard deviation DTR C
+  if(!is.na(match("SU", names(ind) ))) ind["SU"] <- apply(X[,,1], 1, function(X) sum(X[1:ts] > 30, na.rm=TRUE)) #summer days, number of days with maximum temperature > 30 C
+  if(!is.na(match("TR", names(ind) ))) ind["TR"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] > 25, na.rm=TRUE)) #tropical nights, number of nights with maximum temperature > 25 C
+  if(!is.na(match("DTV", names(ind) ))) ind["DTV"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #day temperature variation, difference between day maximum and minimum temperatures (degree Celsius) 
+  if(!is.na(match("NTV", names(ind) ))) ind["NTV"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #night temperature variation, difference between night maximum and minimum temperatures (degree Celsius) 
+
   return(ind)
+}
+
+
+#Calculate evapotranspiration (ETo)
+#details in http://www.fao.org/docrep/S2022E/s2022e07.htm#3.1.4%20calculation%20example%20blaney%20criddle
+#X = an array with two dimensions containing time series temperature data
+#     1st dimension contains the day temperature and 2nd dimension the night temperature
+#p = mean daily percentage of annual daytime hours for different latitudes
+#ts = the time span to calculate the total evapotranspitation
+#Kc = crop factor for watter requirement
+
+#function return the ETo in mm/day
+
+#FURTHER improvements:
+#implement p using latitude and planting date 
+get.ETo <- function(X = NULL, p = 0.27,  lat = NULL, Kc = 1){
+  
+  #calculate Tmean
+  Tmean <- rowMeans(cbind(apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )), apply(X[,,2], 1, function(X) min(X[1:ts], na.rm=TRUE ))))
+  #reference evapotranspiration 
+  eto <- p * (0.46 * Tmean + 8) * Kc
+  
+  return(eto)
+  
 }
 
 #Calculate the MLDS rainfall index
