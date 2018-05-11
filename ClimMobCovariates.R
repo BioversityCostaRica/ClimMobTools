@@ -138,7 +138,7 @@ get.MLDS <- function(X, ts = NULL)
    MLDS <- apply(X, 1, function(X){
      Y <- X[1:ts]
      Y <- ifelse(Y < 1, 0, Y)
-     return(max(rle(Y)$lengths))
+     return(max(rle(Y)$lengths, na.rm = TRUE))
      }  )
   return(MLDS)
 }
@@ -153,7 +153,7 @@ get.MLWS <- function(X, ts = NULL)
   MLWS <- apply(X, 1, function(X){
     Y <- X[1:ts]
     Y <- ifelse(Y >= 1, 0, runif(length(Y), min=2, max=10))
-    return(max(rle(Y)$lengths))
+    return(max(rle(Y)$lengths, na.rm = TRUE))
     }  )
   return(MLWS)
 }
@@ -169,8 +169,8 @@ get.Rx5day <- function(X, ts = NULL)
   Y <- apply(X, 1, function(X){
     r5day <- NULL
     for(i in 1:(ts-4)){
-      r5day <- cbind(r5day, sum(X[i:(i+4)]))}
-    return(max(r5day))
+      r5day <- cbind(r5day, sum(X[i:(i+4)], na.rm = TRUE))}
+    return(max(r5day, na.rm = TRUE))
     })
   return(Y)
 }
@@ -206,19 +206,18 @@ rainfall.index <- function(X, ts = NULL, index = NULL)
   
   if(!is.na(match("MLDS", names(ind) ))) ind["MLDS"]     <- get.MLDS(X, ts) #maximum length of consecutive dry days (< 1 mm)
   if(!is.na(match("MLWS", names(ind) ))) ind["MLWS"]     <- get.MLWS(X, ts) #maximum length of consecutive wet days
-  if(!is.na(match("R5mm", names(ind) ))) ind["R5mm"]     <- apply(X, 1, function(X) sum(X[1:ts] >= 5 & X[1:ts] < 10) ) #days with  rainfall between 5-10 mm
-  if(!is.na(match("R10mm", names(ind) ))) ind["R10mm"]   <- apply(X, 1, function(X) sum(X[1:ts] >= 10 & X[1:ts] < 15) ) #days with  rainfall between 10-15 mm
-  if(!is.na(match("R20mm", names(ind) ))) ind["R20mm"]   <- apply(X, 1, function(X) sum(X[1:ts] >= 20) ) #days with  rainfall > 20 mm
-  if(!is.na(match("SDII", names(ind) ))) ind["SDII"]     <- apply(X, 1, function(X) (sum(X[1:ts])/length(X[1:ts] > 0)) ) #simple rainfall intensity index (mean of rainy days / total rainfall)
-  if(!is.na(match("Rx1day", names(ind) ))) ind["Rx1day"] <- apply(X, 1, function(X) max(X[1:ts])) #maximum 1-day rainfall
+  if(!is.na(match("R5mm", names(ind) ))) ind["R5mm"]     <- apply(X, 1, function(X) sum(X[1:ts] >= 5 & X[1:ts] < 10, na.rm=TRUE) ) #days with  rainfall between 5-10 mm
+  if(!is.na(match("R10mm", names(ind) ))) ind["R10mm"]   <- apply(X, 1, function(X) sum(X[1:ts] >= 10 & X[1:ts] < 15, na.rm=TRUE) ) #days with  rainfall between 10-15 mm
+  if(!is.na(match("R20mm", names(ind) ))) ind["R20mm"]   <- apply(X, 1, function(X) sum(X[1:ts] >= 20, na.rm = TRUE) ) #days with  rainfall > 20 mm
+  if(!is.na(match("SDII", names(ind) ))) ind["SDII"]     <- apply(X, 1, function(X) (sum(X[1:ts], na.rm = TRUE)/length(X[1:ts] > 0)) ) #simple rainfall intensity index (mean of rainy days / total rainfall)
+  if(!is.na(match("Rx1day", names(ind) ))) ind["Rx1day"] <- apply(X, 1, function(X) max(X[1:ts], na.rm = TRUE)) #maximum 1-day rainfall
   if(!is.na(match("Rx5day", names(ind) ))) ind["Rx5day"] <- get.Rx5day(X, ts) #maximum 5-day rainfall
-  if(!is.na(match("Rtotal", names(ind) ))) ind["Rtotal"] <- apply(X, 1, function(X) sum(X[1:ts], na.rm = T) ) #total rainfall (mm) in wet days (r >= 1)
+  if(!is.na(match("Rtotal", names(ind) ))) ind["Rtotal"] <- apply(X, 1, function(X) sum(X[1:ts], na.rm = TRUE) ) #total rainfall (mm) in wet days (r >= 1)
   
   ind[is.na(ind)] <- 0
   
   return(ind)
 }
-
 
 #crap code ####
 
