@@ -1,26 +1,41 @@
 #Tools for environmental data gathering
 #Kaue de Sousa 
 #First run 31 Nov 2017
-#Updated in 08 May 2018
+#Updated in 11 May 2018
 
 
 # Tools for environmental data gathering ####
 
 #Get time series environmental data from a defined timespan within sites
 # X = a matrix with time series environmental data 
-# pdata = a vector with sowing dates name 
+# start.date = a vector with the starting date to capture the climate information (generally the planting date)
 # ts = an integer corresponding the timespan since the sowing date
-# days.before = an integer corresponding how many days before sowing date will be included in the timespan
-# function return a matrix with time series data from the chosen period
-get.timespan <- function(X, pdate, ts = 50, days.before = 0)
+# days.before = an integer corresponding how many days before starting date will be included in the timespan
+# function return a matrix with time series data from the chosen period (starting date to the lenght of timespan)
+
+get.timespan <- function(X, start.date, ts = 50, days.before = 0)
   {
-  n <- nrow(X)
-  date <- as.data.frame(pdate)
-  date <- match(as.character(date[,1]), as.character(dimnames(X)[[2]]))
+  
+  if(length(ts) > 1) maxts <- max(ts) else maxts <- ts
+  if(is.matrix(X)) n <- nrow(X) else n <- 1
+  if(is.matrix(X)) days <- as.character(dimnames(X)[[2]]) else days <- names(X)
+  
+  date <- as.data.frame(start.date)
+  date <- match(as.character(date[,1]), days)
   date <- date - days.before
   Y <- NULL
-  for(i in 0:ts) Y <- cbind(Y, X[cbind(1:n, date+i)]) #need a better solution
-  return(Y[,c(1:ts)])
+  if(is.matrix(X)) {for(i in 0:maxts) Y <- cbind(Y, X[cbind(1:n, date+i)]) } #need a better solution
+  if(!is.matrix(X)) {for(i in 0:maxts) Y <- cbind(Y, X[cbind(date+i)]) } #need a better solution
+  
+  if(length(ts) > 1){
+    
+    for(i in seq_along(ts)){
+      Y[i,ts[i]:ncol(Y)] <- NA
+    }
+    
+  }
+  
+  return(Y[,c(1:maxts)])
 }
 
 #Get growing degree days using temperature data
@@ -105,7 +120,7 @@ temp.index <- function(X, ts = NULL, index = NULL)
 get.ETo <- function(X = NULL, p = 0.27,  lat = NULL, Kc = 1){
   
   #calculate Tmean
-  Tmean <- rowMeans(cbind(apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE )), apply(X[,,2], 1, function(X) min(X[1:ts], na.rm=TRUE ))))
+  Tmean <- rowMeans(cbind(apply(X[,,1], 1, function(X) max(X, na.rm=TRUE )), apply(X[,,2], 1, function(X) min(X, na.rm=TRUE ))))
   #reference evapotranspiration 
   eto <- p * (0.46 * Tmean + 8) * Kc
   
