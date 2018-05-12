@@ -81,9 +81,9 @@ temp.index <- function(X, ts = NULL, index = NULL)
   {
   n <- dim(X)[1]
   if(is.null(index)) {
-    ind <- as_tibble(matrix(nrow = n, ncol = 11,
+    ind <- as_tibble(matrix(nrow = n, ncol = 9,
                      dimnames = list(NULL, 
-                                     c("maxDT","minDT","maxNT","minNT","SU","TR","DTR","maxDTR","sdDTR","DTV","NTV"))))
+                                     c("maxDT","minDT","maxNT","minNT","SU","TR","DTR","maxDTR","sdDTR")))) #,"DTV","NTV"
   }else{
       ind <- as_tibble(matrix(nrow = n, ncol = length(index),
                               dimnames = list(NULL, index)))
@@ -98,8 +98,8 @@ temp.index <- function(X, ts = NULL, index = NULL)
   if(!is.na(match("sdDTR", names(ind) ))) ind["sdDTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) sd(X[1:ts], na.rm = TRUE) ) #standard deviation DTR C
   if(!is.na(match("SU", names(ind) ))) ind["SU"] <- apply(X[,,1], 1, function(X) sum(X[1:ts] > 30, na.rm=TRUE)) #summer days, number of days with maximum temperature > 30 C
   if(!is.na(match("TR", names(ind) ))) ind["TR"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] > 25, na.rm=TRUE)) #tropical nights, number of nights with maximum temperature > 25 C
-  if(!is.na(match("DTV", names(ind) ))) ind["DTV"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #day temperature variation, difference between day maximum and minimum temperatures (degree Celsius) 
-  if(!is.na(match("NTV", names(ind) ))) ind["NTV"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #night temperature variation, difference between night maximum and minimum temperatures (degree Celsius) 
+  #if(!is.na(match("DTV", names(ind) ))) ind["DTV"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #day temperature variation, difference between day maximum and minimum temperatures (degree Celsius) 
+  #if(!is.na(match("NTV", names(ind) ))) ind["NTV"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #night temperature variation, difference between night maximum and minimum temperatures (degree Celsius) 
 
   return(ind)
 }
@@ -213,9 +213,7 @@ rainfall.index <- function(X, ts = NULL, index = NULL)
   if(!is.na(match("Rx1day", names(ind) ))) ind["Rx1day"] <- apply(X, 1, function(X) max(X[1:ts], na.rm = TRUE)) #maximum 1-day rainfall
   if(!is.na(match("Rx5day", names(ind) ))) ind["Rx5day"] <- get.Rx5day(X, ts) #maximum 5-day rainfall
   if(!is.na(match("Rtotal", names(ind) ))) ind["Rtotal"] <- apply(X, 1, function(X) sum(X[1:ts], na.rm = TRUE) ) #total rainfall (mm) in wet days (r >= 1)
-  
-  ind[is.na(ind)] <- 0
-  
+
   return(ind)
 }
 
