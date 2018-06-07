@@ -38,6 +38,7 @@ get.timespan <- function(X, start.date, ts = 50, days.before = 0)
   return(Y[,c(1:maxts)])
 }
 
+
 #Get growing degree days using temperature data
 #GDD is a heat index that can be used to predict when a crop will reach maturity
 # X = an array with two dimensions containing time series temperature data
@@ -45,9 +46,9 @@ get.timespan <- function(X, start.date, ts = 50, days.before = 0)
 # gdd = an integer indicating the average degree days for the crop species
 # gdd.base = an integer indicating the base for GDD calculation
 # function return a vector with days the site took to reach the GDD for the crop
-get.GDD <- function(X, gdd = NULL, gdd.base = 10)
+get.GDD <- function(X, gdd = NULL, base = 10)
   {
-  Y <- (((X[,,1] + X[,,2]) / 2) - gdd.base)
+  Y <- (((X[,,1] + X[,,2]) / 2) - base)
   
   Y <- apply(Y, 1, function(x){
     for(d in 1:length(x)){
@@ -70,20 +71,17 @@ get.GDD <- function(X, gdd = NULL, gdd.base = 10)
 # maxNT: maximum night temperature (°C)
 # minNT: minimum night temperature (°C)
 # DTR: diurnal temperature range, mean difference between DT and NT (degree Celsius)
-# maxDTR: maximum DTR C
-# sdDTR: standard deviation DTR C
 # SU: summer days, number of days with maximum temperature > 30 C
 # TR: tropical nights, number of nights with maximum temperature > 25 C
-# DTV: day temperature variation, difference between day maximum and minimum temperatures (degree Celsius) 
-# NTV: night temperature variation, difference between night maximum and minimum temperatures (degree Celsius) 
+
 
 temp.index <- function(X, ts = NULL, index = NULL)
   {
   n <- dim(X)[1]
   if(is.null(index)) {
-    ind <- as_tibble(matrix(nrow = n, ncol = 9,
+    ind <- as_tibble(matrix(nrow = n, ncol = 7,
                      dimnames = list(NULL, 
-                                     c("maxDT","minDT","maxNT","minNT","SU","TR","DTR","maxDTR","sdDTR")))) #,"DTV","NTV"
+                                     c("maxDT","minDT","maxNT","minNT","SU","TR","DTR"))))
   }else{
       ind <- as_tibble(matrix(nrow = n, ncol = length(index),
                               dimnames = list(NULL, index)))
@@ -94,12 +92,8 @@ temp.index <- function(X, ts = NULL, index = NULL)
   if(!is.na(match("maxNT", names(ind) ))) ind["maxNT"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE )) #maximum night temperature (degree Celsius)
   if(!is.na(match("minNT", names(ind) ))) ind["minNT"] <- apply(X[,,2], 1, function(X) min(X[1:ts], na.rm=TRUE )) #minimum night temperature (degree Celsius)
   if(!is.na(match("DTR", names(ind) ))) ind["DTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) mean(X[1:ts], na.rm = TRUE) ) #diurnal temperature range, mean difference between DT and NT (degree Celsius)
-  if(!is.na(match("maxDTR", names(ind) ))) ind["maxDTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) max(X[1:ts], na.rm = TRUE) ) #maximum DTR C
-  if(!is.na(match("sdDTR", names(ind) ))) ind["sdDTR"] <- apply((X[,,1]-X[,,2]), 1, function(X) sd(X[1:ts], na.rm = TRUE) ) #standard deviation DTR C
   if(!is.na(match("SU", names(ind) ))) ind["SU"] <- apply(X[,,1], 1, function(X) sum(X[1:ts] > 30, na.rm=TRUE)) #summer days, number of days with maximum temperature > 30 C
   if(!is.na(match("TR", names(ind) ))) ind["TR"] <- apply(X[,,2], 1, function(X) sum(X[1:ts] > 25, na.rm=TRUE)) #tropical nights, number of nights with maximum temperature > 25 C
-  #if(!is.na(match("DTV", names(ind) ))) ind["DTV"] <- apply(X[,,1], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #day temperature variation, difference between day maximum and minimum temperatures (degree Celsius) 
-  #if(!is.na(match("NTV", names(ind) ))) ind["NTV"] <- apply(X[,,2], 1, function(X) max(X[1:ts], na.rm=TRUE) - min(X[1:ts], na.rm=TRUE)) #night temperature variation, difference between night maximum and minimum temperatures (degree Celsius) 
 
   return(ind)
 }
@@ -127,6 +121,10 @@ get.ETo <- function(X = NULL, p = 0.27,  lat = NULL, Kc = 1){
   return(eto)
   
 }
+
+
+
+
 
 #Calculate the MLDS rainfall index
 #MLDS is a rainfall index indicating the maximum length of consecutive dry days (r < 1 mm) during a given timespan
@@ -213,268 +211,10 @@ rainfall.index <- function(X, ts = NULL, index = NULL)
   if(!is.na(match("Rx1day", names(ind) ))) ind["Rx1day"] <- apply(X, 1, function(X) max(X[1:ts], na.rm = TRUE)) #maximum 1-day rainfall
   if(!is.na(match("Rx5day", names(ind) ))) ind["Rx5day"] <- get.Rx5day(X, ts) #maximum 5-day rainfall
   if(!is.na(match("Rtotal", names(ind) ))) ind["Rtotal"] <- apply(X, 1, function(X) sum(X[1:ts], na.rm = TRUE) ) #total rainfall (mm) in wet days (r >= 1)
-
+  
+  ind[is.na(ind)] <- 0
+  
   return(ind)
 }
 
-#crap code ####
 
-# #Take samples for bagging
-# #require(PlackettLuce)
-# # G = a grouped rankings (see PlackettLuce::grouped_rankings)
-# # data = a dataframe (tibble) with explanatory variables (attributes)
-# # nboot = an integer indicating the number of samples for bagging procedure
-# #function return a list with n (nboot) train data and test data
-# bagging.samples <- function(G, data, nboot=100)
-# {
-#   n <- nrow(data)
-#   samples <- list()
-#   for(b in 1:nboot){
-#     s <- sample(1:n, replace = TRUE)
-#     
-#     samples[[b]] <- list(train = data[s, ], test = data[-s, ], G = G[s], s = s)
-#   }
-#   return(samples)
-# }
-# 
-# #PL model in a bagging procedure
-# bagging.PL <- function(B, A, minsize = 50, alpha = 0.05, backup = FALSE)
-# {
-#   n <- nrow(B$train)
-#   items <- as.character(dimnames(attr(B$G, "rankings"))[[2]])
-#   Y <- B$G
-#   tree <- PlackettLuce::pltree(as.formula(paste0("Y ~ ", paste(A , collapse = " + "))), 
-#                                data = B$train[A], 
-#                                minsize = minsize, alpha = alpha, 
-#                                bonferroni = TRUE, method = "L-BFGS")
-#   
-#   coeff <- array(dim = c(n, length(items), 1), dimnames = list(NULL, items, NULL))
-#   coeff[ - B$s , , ] <- predict(tree, newdata = B$test[A] )
-#   
-#   out <- list(coeff = coeff, tree = tree)
-#   
-#   if(backup) {save(out, file = "./backup_baggingPL.RData")}
-#   
-#   return(out)
-# }
-# 
-# extract.coeff <- function(X) 
-# {
-#   s <- X[[1]][[1]]
-#   coeff <- array(dim = c(dim(s)[1:2], length(X)) , dimnames = dimnames(s))
-#   for(i in 1:length(X)){ coeff[ , , i] <- X[[i]][[1]] }
-#   
-#   coeff <- apply(coeff, c(1,2), function(x) { mean(x, na.rm = TRUE)})
-#   coeff <- coeff * -1
-#   coeff <- t(apply(coeff, 1, function(x){ rank(x, ties.method = "random") } ))
-#   
-#   return(coeff)
-# }
-# 
-# ##Cross-validation with bagging
-# # B <- list()
-# # for(i in 1:k){
-# #   data <- mydata
-# #   data$set <- ifelse(data$folds == i, "test","train")
-# #   samples <- bagging.samples(G, data[ data$folds != i , as.vector(unlist(attrib))], nboot = 3 )
-# #   B[[i]] <- list(data = data, samples = samples)
-# # }
-# 
-# crossvalidation.PL <- function(B, A, minsize = 50, alpha = 0.05)
-# {
-#   n <- nrow(B$data)
-#   items <- as.character(dimnames(attr( B$samples[[1]]$G , "rankings"))[[2]])
-#   test <- B$data[ B$data$set == "test", ]
-#   
-#   cvtrees  <- parLapply(cl, X = B$samples, fun = function(X) {  bagging.PL(X , A, minsize = minsize, alpha = alpha )$tree })
-#   
-#   cvpred   <- lapply(cvtrees, function(x) {predict(x, newdata = test)})
-#   
-#   cvpred   <- array(unlist(cvpred), dim = c(nrow(cvpred[[1]]), ncol(cvpred[[1]]), length(cvpred) ))
-#   
-#   coeff    <- array( dim = c(n, length(items), 1 ), dimnames = list(NULL, items, NULL))
-#   
-#   coeff[B$data$set == "test",  , ] <- apply(cvpred, c(1,2), function(x) {mean(x, na.rm=TRUE)} )
-#   
-#   return(coeff)
-# }
-# 
-# extract.coeff2 <- function(X) 
-# {
-#   s <- X[[1]][[1]]
-#   X <- array(unlist(X), dim = c(dim(X[[1]])[1:2], length(X) ), dimnames = dimnames(X[[1]]))
-#   coeff <- apply(X, c(1,2), function(x) { mean(x, na.rm = TRUE)})
-#   coeff <- coeff * -1
-#   coeff <- t(apply(coeff, 1, function(x){ rank(x, ties.method = "random") } ))
-#   return(coeff)
-# }
-# 
-# 
-# #Calculate Kendall tau
-# K.tau <- function(model.rank = NULL, observed.rank = NULL, drop.local = FALSE, ...)
-# {
-#   if(drop.local) observed.rank <- observed.rank[,dimnames(observed.rank)[[2]]!="Local"]
-#   
-#   n <- nrow(observed.rank)
-#   
-#   tau <- rep(NA, times = n)
-#   
-#   for(b in 1:nrow(model.rank)){
-#     o <- observed.rank[b, observed.rank[b,] > 0] 
-#     tau[b] <- cor(as.vector(o), model.rank[b, names(o)], method = "kendall" )
-#   }
-#   
-#   return(mean(tau, na.rm=TRUE)) 
-# }
-# 
-# #extract splitting attributes from nodes 
-# extract.from.nodes <- function(X, depth = 5)
-# {
-#   l <- length(X)
-#   attr <- names(X[[1]]$data)
-#   infonodes <- array(NA, dim = c(l, depth , 2 ))
-#   for(n in 1:l){
-#     ids <- partykit::nodeids(X[[n]], terminal = F)[-nodeids(X[[n]], terminal = T)]
-#     if(length(ids)==0) next
-#     for(i in 1:depth){
-#       infonodes[n,i,1] <- attr[X[[n]][[ids[i]]]$node$split$varid] 
-#       infonodes[n,i,2] <- if(is.null(X[[n]][[ids[i]]]$node$split$breaks)) NA else X[[n]][[ids[i]]]$node$split$breaks
-#       if(length(ids) < depth & i==length(ids)) break
-#     }
-#   }
-#   return(infonodes)
-# }
-
-
-
-
-
-
-
-# bagging.PL <- function(formula, G = NULL, data = NULL, nboot = 100, alpha = 0.05, minsize = 25,  ...)
-# {
-#   n <-  nrow(data)
-#   e <- all.names(formula[[3]], functions = FALSE, max.names = -1L)
-#   items <- as.character(dimnames(attr(G, "rankings"))[[2]])
-#   
-#   samples <- matrix(NA, ncol = nboot, nrow = n) 
-#   
-#   aggr.coeff <- array(NA, dim = c(n, length(items), nboot), dimnames = list(c(1:n),items,c(1:nboot)))
-#   models <- list()
-#   for(b in 1:nboot){
-#     s <- sample(1:n,  replace = TRUE) 
-#     
-#     Y <- G[s]
-#     
-#     tree <- PlackettLuce::pltree(as.formula(paste0("Y ~ ", paste(e, collapse = " + "))), 
-#                                  data = data[ s, e ], 
-#                                  minsize = minsize, alpha = alpha, 
-#                                  bonferroni = TRUE, method = "L-BFGS")
-#     
-#     aggr.coeff[ -s , , b] <- predict(tree, newdata = data[ -s, ])
-#     models[[b]] <- tree
-#     samples[,b] <- s
-#   }
-#   
-#   aggr.rank <- apply(aggr.coeff, c(1,2), function(x) {mean(x, na.rm=TRUE)} )
-#   aggr.rank <- aggr.rank * -1
-#   aggr.rank <- t(apply(aggr.rank, 1, function(x){ rank(x, ties.method = "random") } ))
-#   
-#   outputs <- list(aggr.rank = aggr.rank, trees = models, coefficients = aggr.coeff, samples = samples, call = match.call())
-#   
-#   class(outputs) <- "PlackettLuce_Bagging"
-#   return(outputs)
-#   
-# }
-
-
-# #Bagging with k-fold cross validation
-# kfold.PL <- function(formula, G = NULL, nboot = 100, data = NULL, alpha = 0.05,  minsize = NULL, backup = TRUE, ... )
-# {
-#   n <- nrow(data)
-#   k <- max(data$folds)
-#   e <- all.names(formula[[3]], functions = FALSE, max.names = -1L)
-#   items <- as.character(dimnames(attr(G, "rankings"))[[2]])
-#   
-#   aggr.coeff <- array(NA, dim = c(n, length(items), k), dimnames = list(c(1:n),items,c(1:k)))
-#   models <- list()
-#   
-#   for(b in 1:k){
-#     train <- data[data["folds"] != b, ]
-#     test  <- data[data["folds"] == b, ]
-#     
-#     kG  <- grouped_rankings(as.PL(train, local = T, additional.rank = T), rep(seq_len(nrow(train)), 4))
-#     
-#     tree <- bagging.PL(as.formula(paste0("kG ~ ", paste(c(e), collapse = " + "))),
-#                        G = kG, data = train, nboot = nboot, alpha = 0.05, minsize = 25)
-#     
-#     models[[b]] <- tree$trees
-#     
-#     kpredict <- lapply(tree$trees, function(x) {predict(x, newdata = test)})
-#     kpredict <- array(unlist(kpredict), dim = c(nrow(kpredict[[1]]), ncol(kpredict[[1]]), length(kpredict) ))
-#     
-#     aggr.coeff[ data["folds"] == b ,  ,  b ] <- apply(kpredict, c(1,2), function(x) {mean(x, na.rm=TRUE)} )
-#     
-#     if(backup) {save(aggr.coeff, b, file = "./backup_kfold.RData")}
-#     
-#   }
-#   
-#   aggr.rank <- apply(aggr.coeff, c(1,2), function(x) {mean(x, na.rm=TRUE)} )
-#   aggr.rank <- aggr.rank * -1
-#   aggr.rank <- t(apply(aggr.rank, 1, function(x){ rank(x, ties.method = "random") } ))
-#   
-#   
-#   outputs <- list(aggr.rank = aggr.rank, trees = models, coefficients = aggr.coeff, call = match.call())
-#   
-#   class(outputs) <- "PlackettLuce_Bagging"
-#   
-#   return(outputs)
-# }
-
-
-# #Attribute bagging
-# attr.bagging.PL <- function(formula, nboot = 100, G = NULL, data = NULL, alpha = 0.05,  minsize = NULL, ... )
-# {
-#   data = as.data.frame(data)
-#   n = nrow(data)
-#   e = all.names(formula[[3]], functions = FALSE, max.names = -1L)
-#   le = length(e)
-#   items = as.character(dimnames(attr(G, "rankings"))[[2]])
-#   models = list()
-#   samples <- matrix(NA, ncol = round(le*0.333), nrow = nboot)
-#   PLcoeff <- array(NA, dim = c(n, length(items), nboot), dimnames = list(c(1:n),items,c(1:nboot)))
-#   for(b in 1:nboot){
-#     s <- sample(1:le, size = round(le*0.333), replace = FALSE)
-#     newformula <- paste0("G ~ ", paste(e[s], collapse = " + "))
-#     tree <- PlackettLuce::pltree(newformula, data = data[ , e[s] ], minsize = minsize, alpha = alpha)
-#     models[[b]] <- tree
-#     PLcoeff[,,b] <- predict(tree, data)
-#     samples[b,] <- e[s]
-#   }
-#   aggr.rank <- apply(PLcoeff, c(1,2), function(x) {mean(x, na.rm=TRUE)} )
-#   aggr.rank <- aggr.rank * -1
-#   aggr.rank <- t(apply(aggr.rank, 1, function(x){ rank(x, ties.method = "random") } ))
-#   
-#   outputs <- list(aggr.rank = aggr.rank, trees = models, coefficients = PLcoeff, samples = samples, call = match.call())
-#   class(outputs) <- "Attribute_bagging"
-#   return(outputs)
-# }
-# 
-# 
-# #Calculate the percentual of times the model predicted the winning item 
-# win.PL <- function(model.rank = NULL, observed.rank = NULL, drop.local = FALSE)
-# {
-#   if(drop.local) observed.rank <- observed.rank[,dimnames(observed.rank)[[2]]!="Local"]
-#   
-#   n = nrow(observed.rank)
-#   
-#   win <- rep(NA, times = n)
-#   
-#   for(k in 1:n){
-#     o = observed.rank[k, observed.rank[k,] > 0] 
-#     w <- o[model.rank[k,names(o)] == min(model.rank[k,names(o)])] == 1
-#     win[k] <- (w/length(w))[1]
-#   }
-#   
-#   return(mean(win, na.rm=TRUE)) 
-# }
