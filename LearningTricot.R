@@ -25,13 +25,11 @@ library(abind)
 #add ClimMob tools for data learning
 tools <- RCurl::getURL("https://raw.githubusercontent.com/kauedesousa/ClimMobTools/pilot/ClimMobLearning.R", ssl.verifypeer = FALSE)
 eval(parse(text = tools))
-#cores for parallel
-#detectCores()
+
+#Define number of cores for parallelisation
 n_cpu <- 3
-#working directory
-#wd <- "C:/Users/Jacob Van Etten/Dropbox/vanEtten_etal2018_replication_data/"
-wd <- "C:/Users/kaued/Dropbox (Bioversity CR)/vanEtten_etal2018_replication_data/"
-#wd<-"/home/tucurrique2/ALLAN/vanEtten_etal2018_replication_data/"
+#Define working directory
+wd <- ""
 setwd(wd)
 
 #read data
@@ -48,43 +46,42 @@ crop <-  sort(unique(df$crop))
 # PLT-clim+loc with explanatory variables from climate and location
 approach <- c("PLT-null","PLT-design","PLT-climate","PLT-clim+loc")
 
-#run over crops
+#Run over crops
 for(m in seq_along(crop)){
 
   cat("################################## \n Starting analysis:", toupper(crop[m]), " \n Time:", date(), "\n")
 
+  #Subset data for the m crop
   mydata <- df[df$crop == crop[m] , ]
 
-  #create folder for outputs
+  #Create folder for outputs
   output <- "./output/"
   dir.create(output, showWarnings = FALSE)
 
-  #an output for the crop
+  #An output folder for the crop
   output <- paste0(output,unique(mydata$crop),"_",unique(mydata$country),"/")
   dir.create(output, showWarnings = FALSE)
 
-  #remove possible storaged factors levels in the subseted data
-  ##soil and season as factor
+  #Reclassify factors levels to fit in the subseted data
   mydata[c("soil","season")] <- lapply(mydata[c("soil","season")], as.character)
   mydata[c("soil","season")] <- lapply(mydata[c("soil","season")], as.factor)
 
-  #select rows for analysis
-  #deal with commonbean dataset
+  #Check consistency of data and remove inconsistent rows
   if(crop[m] == "commonbean"){
     #remove NA's in rankings for overall_performance vs local
     keep <- !is.na(mydata$var_a) & !is.na(mydata$var_b) & !is.na(mydata$var_c)
     mydata <- mydata[keep,]
   }
 
-  #deal with wheat dataset
   if(crop[m] == "wheat"){
-
+    #for wheat
     #remove items (varieties) tested in only 1 season
-    #here we are removing items, not the entire row, rows with more than 1 NA will be removed next
+    #here we remove items, not the entire row, rows with more than 1 NA will be removed next
     rm_item <- as.data.frame(table(mydata$variety_a, mydata$season))
     rm_item[rm_item > 0] <- 1
     rm_item <- aggregate(rm_item[,"Freq"], by=list(rm_item[,"Var1"]), sum)
     rm_item <- as.vector(c(as.character(rm_item[rm_item$x<2, 1 ]), "HUW468"))
+    
     for(i in 1:length(rm_item)){
       mydata$variety_a <- ifelse(mydata$variety_a == rm_item[i], NA, mydata$variety_a)
       mydata$variety_b <- ifelse(mydata$variety_b == rm_item[i], NA, mydata$variety_b)
@@ -103,14 +100,14 @@ for(m in seq_along(crop)){
     mydata <- mydata[keep, ]
   }
 
-  #CHECK correlation between overall performance and yield
-  #only available for common wheat (IND) and common beans (NIC)
+  #Check correlation between overall performance and yield
+  #this information is only available for wheat (IND) and common beans (NIC)
   if(crop[m] != "durumwheat"){
-    #overall performance
+    #rankings from overall performance
     overall <- mydata[,c("variety_a","variety_b","variety_c","characteristic","best","worst")]
-    #yield data
+    #rankings from yield
     yield <- mydata[,c("variety_a","variety_b","variety_c","yield","best_yield","worst_yield")]
-    #same names of overall in yield
+    #make sure that both datasets has the same names
     names(yield) <- names(overall)
 
     #remove NA's in yield
@@ -123,7 +120,7 @@ for(m in seq_along(crop)){
     yield <- grouped_rankings(as.PL(yield, local = F, additional.rank = F ), seq_len(nrow(yield)))
     yield <- yield[1:length(yield),, as.grouped_rankings = FALSE]
 
-    #get rankings for overall
+    #get rankings for overall performance
     overall <- grouped_rankings(as.PL(overall, local = F, additional.rank = F ), seq_len(nrow(overall)))
     overall <- overall[1:length(overall),, as.grouped_rankings = FALSE]
 
@@ -132,17 +129,17 @@ for(m in seq_along(crop)){
     capture.output(get_tau(yield, overall)[1] * -1 , file = paste0(output,"Kendall_tau_yield_vs_overall.txt"))
   }
 
-  #Take explanatory variables in a separate data frame and check variance
+  #Take explanatory variables in a separate dataframe
   covar <- cbind(mydata [, c("season","lat","lon","xy","yx","soil", "planting_day","planting_date")],
                  mydata [, c(30:(ncol(mydata)-4))])
 
-  #Identify explanatory variables with near 0 variance
+  #Identify explanatory variables with near zero variance
   varout <- caret::nearZeroVar(covar)
   cat("Removing these variables with near zero variance: \n",sort(names(covar)[varout]),"\n")
-  #Remove those whith near 0 variance
+  #Remove variables with near zero variance
   covar <- covar[,-varout]
   
-  #Keep only the rankings in mydata
+  #Take rankings from mydata 
   if(crop[m] != "durumwheat"){
     mydata <- cbind(mydata[, c("variety_a","variety_b","variety_c",
                                "characteristic","best","worst",
@@ -158,19 +155,21 @@ for(m in seq_along(crop)){
   n <- nrow(mydata)
 
   #Generate a Plackett-Luce grouped rankings
-  #for common beans we add the comparison with the local var in partial rankings
-  #in this approach each comparison with local is a individual rank
+  ## for common beans we add the comparison with the local var as partial rankings
+  ## in this approach the three variaties from tricot are compared together in the same rank
+  ## then each variety is compared with local as an individual rank (additional.rank)
   if(crop[m] == "commonbean"){
     G <- grouped_rankings(as.PL(mydata, local = TRUE, additional.rank = TRUE ), rep(seq_len(n), 4))
   }
   
-  #information about local item is not available for the other datasets
-  #a simple grouped rankings is created
+  ## information about local variety is not available for wheat
+  ## then a simple grouped rankings is created
   if(crop[m] == "wheat"){
     G <- grouped_rankings(as.PL(mydata, local = FALSE), seq_len(n))
   }
 
-  #ethiopia
+  ## durum data is another format
+  ## reorganise the dataset to convert into grouped rankings
   if(crop[m] == "durumwheat"){
 
     #convert data in long format
@@ -183,7 +182,8 @@ for(m in seq_along(crop)){
       set_colnames(c("package","var","rank")) %>%
       arrange(., package)
     
-    #check the frequency of observations per accession
+    #check the number of observations per variety
+    #remove those tested in less than 20 farms 
     rmitem <- R %>% 
       group_by(var) %>%  
       count(var) %>%
@@ -192,25 +192,25 @@ for(m in seq_along(crop)){
       as.matrix() %>%
       as.vector()
 
-    #take item names
+    #take variety names
     items <- sort(unique(R[,"var"]))
     
     #match those to remove
     rmitem <- match(rmitem, items)
 
-    #convert in a sparsed matrix
+    #convert dataset from long format into a sparsed matrix
     R <- sparseMatrix(i = rep(1:n, each = 4),
                       j = match(R[,"var"], items),
                       x = R[,"rank"],
                       dimnames = list(as.integer(unique(R[,"package"])), items ))
-    #R into a regular matrix
+    #sparsed matrix into a ordinary matrix from R package base
     R <- as.matrix(R)
-    #remove predefinided items
+    #remove varieties selected previously
     R <- R[,-rmitem]
     #remove rows with less tham 2 items
     R <- R[-which(rowSums(R > 0) < 2), ]
 
-    #row names here are the packages codes, get this to merge rankings and covariates right
+    #row names here are the packages codes, get this to merge rankings and explanatory variables
     keep <- row.names(R)
  
     #add package codes to covar
@@ -224,13 +224,13 @@ for(m in seq_along(crop)){
     #define new n
     n <- nrow(R)
 
-    #adjust row names in R and covar
+    #rename rows the rankings
     row.names(R) <- 1:n
     row.names(covar) <- row.names(R)
 
     pack <- mydata[,"package"]
     
-    #Plackett-Luce rankings
+    #convert to a grouped rankings
     G <- grouped_rankings(as.rankings(R), seq_len(n))
 
     #remove packages codes
@@ -240,63 +240,63 @@ for(m in seq_along(crop)){
 
   cat("This analysis will use",n,"observations.\n")
   
-  #Merge these rankings with covariables
+  #Merge grouped rankings with explanatory variables
   mydata <- cbind(G, covar)
-
 
   #Define folds based on the season where this crop was evaluated
   folds <- as.integer(as.factor(as.character(mydata$season)))
   #number of folds
   k <- max(folds)
 
-  #Calculate the weights represented by seasons
+  #Calculate the weights of each season based on the square root of n observations per season divided by total n
   wseason <- as.vector(summary(mydata$season))
   wseason <- sqrt(wseason/n)
   wseason <- wseason/sum(wseason)
 
-  ## Perform a forward variable selection on climate+spatial explanatory variables and select those who contribute to improve predictions between seasons
-  #to be able to predict a PLtree object from a null model we create a NULL variable and add to the main dataset
+  #Perform a forward variable selection on explanatory variables and select those who better contribute to improve predictions between seasons
+  ## also compare the performance of explanatory variables with a null model 
+  ## to be able to predict a PLtree object from a null model we create a NULL variable (variable with no variance) and added to the main dataset
   mydata$P1 <- 1
 
-  #select explanatory variables
+  #Select explanatory variables
   expvar <- names(mydata)[5:ncol(mydata)]
 
-  # #Define PLT parameters 
+  #Define PLT parameters 
+  ## minimum size of each node 
   minsize <- round(n*0.3, -1)
+  ## if bonferroni correction will be applied
   bonferroni <- TRUE
+  ## the significance level for spliting the data into nodes
   alpha <- 0.01
-  npseudo <- 0.5
-  weights <- NULL
-  lambda <- 0
 
   #Define initial parameters for forward selection
-  ## Deviance from null model (used as baseline)
+  ## baseline deviance
   par_n <-  0
-  ##vector to keep best explanatory variables
+  ## vector to keep best explanatory variables
   var_keep <- NULL
-  ##if TRUE the routine will keep running, this parameters is updated at the end of each "while" routine
+  ## if TRUE the routine will keep running, this parameters is updated at the end of each "while" routine
   best <- TRUE
-  ##keep number of runs
+  ## number of runs
   runs <- FALSE
-  ##vector with best parameters (loglik, vars and lambda) in each run
+  ## vector with best parameters (loglik, vars and lambda) in each run
   best_parameters <- NULL
 
-  #remove unused objects and reduce size of globalenv() in parallel export
+  #Remove unused objects and reduce size of globalenv() in parallel export
   rm(covar, yield, ykeep, overall)
 
-  #Create cluster to do parallel computation to speed things up
+  #Create cluster to do parallelisation
   cluster <- makeCluster(n_cpu)
   registerDoParallel(cluster)
-  getDoParWorkers()
 
-  ## Perform forward selection
+  #Perform forward selection
+  #run untial the model reach its best performance
   while(best){
 
     cat("Starting Forward Selection. Run ", sum(runs)+1, "\n Time: ", date(), "\n")
 
     fs <- length(expvar)
 
-    #get predictions for test from nodes and put in matrix (foreach)
+    #get predictions from nodes and put in matrix (foreach)
     models <- foreach(i = 1:fs,
                       .combine = acomb,
                       .packages = c("PlackettLuce","psychotree"),
@@ -304,8 +304,7 @@ for(m in seq_along(crop)){
                         f1(formula = as.formula(paste0("G ~ ", paste(unique(c(var_keep, expvar[i])), collapse = " + "))),
                            d = mydata,
                            k = k, folds = folds, minsize = minsize,
-                           alpha = alpha, bonferroni = bonferroni,
-                           weights = weights, npseudo = npseudo, lambda = lambda)
+                           alpha = alpha, bonferroni = bonferroni)
                       )
 
     #calculate Akaike weights along explanatory variables per season
@@ -327,7 +326,7 @@ for(m in seq_along(crop)){
     #take Kendall tau
     tau <- models[,(ncol(models)-1)]
 
-    #take call from each model
+    #take the model call from each model
     call <- models[,ncol(models)]
 
     #take maximum parameter from Akaike weights
@@ -337,7 +336,7 @@ for(m in seq_along(crop)){
     index_par_max <- which.max(meanAW)
 
     #Is par_max best (higher) than par_n?
-    best <- par_max > par_n #if not, stop
+    best <- par_max > par_n #if not, the forward selection will stop
 
     #if best, save the outputs
     if(best){
@@ -349,7 +348,7 @@ for(m in seq_along(crop)){
       #sum runs
       runs <- c(runs, best)
 
-      #ensemble outputs from this run and export to a .csv file
+      #take outputs from this run and export to a .csv file
       out <- as_tibble(cbind(call, models[,c(1:k)], AW, meanAW = meanAW, inernodes = nodes, tau = tau))
       colnames(out) <- c("call", paste0(rep("Deviance",k), 1:k), paste0(rep("AkaikeWeight",k), 1:k), "meanAW", "inernodes", "Kendall_tau")
 
@@ -377,22 +376,19 @@ for(m in seq_along(crop)){
 
   }
 
-  #Stop connection with cores
+  #Stop cluster connection
   stopCluster(cluster)
 
-  #return best model
+  #take the best model
   best_model <- var_keep
 
   #Save parameters used in this analysis
   write.table(rbind(n = n, minsize = minsize, bonferroni = bonferroni,
-                    alpha = alpha,npseudo = npseudo, weights = weights,
-                    model = paste(best_model, collapse = " + ")),
+                    alpha = alpha, model = paste(best_model, collapse = " + ")),
               file = paste0(output, "PLT_parameters.txt" ))
 
   cat("End Forward Selection. \n Time: ", date(), "\n Best model will use:",  best_model ,"\n")
 
-  
-  best_model <- as.character(read.table(paste0(output, "PLT_parameters.txt"))[6,])
   
   #Define list of explanatory variables to use in each approach
   attrib <- list(null = c("P1"),
@@ -401,16 +397,9 @@ for(m in seq_along(crop)){
                  clsp = c(best_model, c("lon","lat","xy","yx","soil") ))
   
   
+  #Run the best model against the PLT-null, PLT-clim+loc and PLT-design
   cat("Starting blocked cross-validation", date() ,"\n")
-  #Define folds based on the season where this crop was evaluated
-  folds <- as.integer(as.factor(as.character(mydata$season)))
-  k <- max(folds)
-  wseason <- as.vector(summary(mydata$season))
-  wseason <- sqrt(wseason/n)
-  wseason <- wseason/sum(wseason)
-
-
-  #Get outputs from each model approach in blocked cross-validation
+  
   blockedfolds <-  matrix(NA, nrow = length(approach), ncol = (6+(k*3)),
                           dimnames = list(1:length(approach),
                                           c("Approach","Model","mean.Ktau","mean.AIC","mean.Deviance",
@@ -430,7 +419,7 @@ for(m in seq_along(crop)){
 
     blockedfolds[ a , c(2:(ncol(blockedfolds)-1))] <- unlist(crossvalidation_PLTE(formula_a,
                                                               d = mydata, k = k, folds = folds, minsize = minsize,
-                                                              alpha = alpha, bonferroni = bonferroni, weights = weights, lambda = lambda,
+                                                              alpha = alpha, bonferroni = bonferroni,
                                                               verbose = FALSE)[c(1:7)])
   }
 
@@ -448,16 +437,16 @@ for(m in seq_along(crop)){
   #write this matrix in a csv file
   write.csv(blockedfolds, paste0(output, "performance_PLT_blocked_crossvalidation.csv"), row.names = FALSE)
 
-  
-  
-  #run average season using historical data
+
+
+  #Run average season using historical data
   cat("Starting average season with blocked cross-validation", date() ,"\n")
-  
-  #load climatology data 
+
+  #load climatology data
   load(paste0("./input/", unique(df$country[df$crop==crop[m]]),"/", crop[m],"_climatology.RData"))
   #define number of predictions to be generated n.years * n.estimated planting dates
   npreds <- length(climatology) * length(climatology[[1]])
-  
+
   #list into array
   nr <- nrow(climatology[[1]][[1]])
   nc <- ncol(climatology[[1]][[1]])
@@ -502,9 +491,9 @@ for(m in seq_along(crop)){
 
 
     avgseason[ a , ] <- unlist(crossvalidation_PLTE(as.formula(paste0("G ~ ", paste(attrib$clim, collapse = " + ") )),
-                                                      d = a_df, k = k, folds = folds, minsize = minsize,
-                                                      alpha = alpha, bonferroni = bonferroni, weights = weights, lambda = lambda,
-                                                      verbose = FALSE, mean.method = "stouffer")[c(2:7)])
+                                                    d = a_df, k = k, folds = folds, minsize = minsize,
+                                                    alpha = alpha, bonferroni = bonferroni, 
+                                                    verbose = FALSE, mean.method = "stouffer")[c(2:7)])
 
     setTxtProgressBar(pb, a)
 
@@ -516,10 +505,9 @@ for(m in seq_along(crop)){
 
   #export data
   write.csv(avgseason, paste0(output, "average_season.csv"), row.names = FALSE)
-  
-  cat("Starting k-fold cross-validation",date(),"\n")
 
-  #Do the same in a 10-fold cross validation
+  #Run a 10-fold cross validation
+  cat("Starting k-fold cross-validation",date(),"\n")
   #Define number of folds
   k <- 10
   #Define samples
@@ -542,7 +530,7 @@ for(m in seq_along(crop)){
 
     kfolds[ a , c(2:(ncol(kfolds)-1))] <- unlist(crossvalidation_PLTE(formula_a,
                                                               d = mydata, k = k, folds = folds, minsize = minsize,
-                                                              alpha = alpha, bonferroni = bonferroni, weights = weights, lambda = lambda,
+                                                              alpha = alpha, bonferroni = bonferroni,
                                                               verbose = FALSE)[c(1:7)])
   }
 
@@ -577,6 +565,7 @@ for(m in seq_along(crop)){
   nodes <- partykit::nodeids(tree, terminal = TRUE)
 
   lims <- NULL
+  
   #identify limits in error bars
   for (j in seq_along(nodes)){
 
@@ -589,10 +578,11 @@ for(m in seq_along(crop)){
       rbind(., lims )
 
 
+    
+    
   }
 
   xmax <- round(max(lims[,"estimate"] + lims[,"quasiSE"]) + 0.01, digits = 2)
-  #xmax <- 5*round((xmax*100)/5) / 100
   xmin <- round(min(lims[,"estimate"] - lims[,"quasiSE"]) - 0.01, digits = 2)
 
   probs <- NULL
@@ -626,7 +616,7 @@ for(m in seq_along(crop)){
       geom_errorbarh(aes(xmin=bmin,
                          xmax=bmax),
                      colour="black",height = 0.17) +
-      geom_vline(xintercept = 1/length(items), colour="#909090") +
+      geom_vline(xintercept = 1/length(items), colour="#E5E7E9", size = 0.5) +
       theme_bw() +
       scale_x_continuous(limits=c(0, xmax), breaks = seq(0,xmax,by=0.02) ) +
       labs(x = NULL, y = NULL, title = paste0("Node ", nodes[j], " (n= ", nobs, ")")) +
@@ -658,7 +648,7 @@ for(m in seq_along(crop)){
 
   #Export probabilities of winning per node
   write_csv(probs, paste0(output, "win_probabilies.csv"))
-  
+
   #Use historical data to get predictions using fitted PLT-clim model
   avgpred <- array(NA, dim = c(n, length(items), npreds), dimnames = list(1:n, as.character(items), 1:npreds) )
 
@@ -671,7 +661,7 @@ for(m in seq_along(crop)){
   }
 
   save(avgpred, file = paste0(output, "average_predictions.RData"))
-  
+
   cat("################################## \n End analysis:", toupper(crop[m]) , " \n Time:", date() , "\n ################################## \n")
   
   
