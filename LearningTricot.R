@@ -1,10 +1,11 @@
 ####################################################
-###### MODELLING CROWDSOURCING DATA 
-#Kaue de Sousa <k.desousa (at) cgiar.org> & Jacob van Etten <j.vanetten (at) cgiar.org>
-#Bioversity International - Costa Rica
+###### Script used to model the performance of crop varieties with climatic variables
+###### a forward selection with Plackett-Luce trees is performed to select the best generalisable model 
+###### for crop performance forecast
+#Kaue de Sousa <k.desousa*at*cgiar.org> & Jacob van Etten <j.vanetten*at*cgiar.org>
+#Bioversity International
 #First run 22Oct2017
 #Updated 02May2017
-####################################################
 
 library(Matrix)
 library(reshape2)
